@@ -1,0 +1,6 @@
+{:paths ["src"]
+ :deps {}
+ :aliases
+ {:build
+  {:deps {io.github.clojure/tools.build {:mvn/version "0.10.7"}}
+   :ns-default build}}}

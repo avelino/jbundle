@@ -93,6 +93,11 @@ jobs:
         run: |
           for example_dir in example/*/; do
             name=$(basename "$example_dir")
+            if [[ "$name" == *"-with-error"* ]]; then
+              echo "::group::Skipping $name (intentional error fixture)"
+              echo "::endgroup::"
+              continue
+            fi
             echo "::group::Building $name"
             ./target/release/jbundle build --input "$example_dir" --output "./dist/$name"
             echo "::endgroup::"

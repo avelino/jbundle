@@ -158,8 +158,15 @@ fn run_clojure_command(project_dir: &Path, args: &[String]) -> Result<PathBuf, P
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let formatted = crate::diagnostic::format_build_error(
+            &stderr,
+            &stdout,
+            BuildSystem::DepsEdn,
+            project_dir,
+        );
         return Err(PackError::BuildFailed(format!(
-            "{cmd_str} failed:\n{stderr}"
+            "{cmd_str} failed:\n{formatted}"
         )));
     }
 
@@ -458,8 +465,15 @@ fn build_leiningen(project_dir: &Path) -> Result<PathBuf, PackError> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let formatted = crate::diagnostic::format_build_error(
+            &stderr,
+            &stdout,
+            BuildSystem::Leiningen,
+            project_dir,
+        );
         return Err(PackError::BuildFailed(format!(
-            "lein uberjar failed:\n{stderr}"
+            "lein uberjar failed:\n{formatted}"
         )));
     }
 
@@ -479,8 +493,14 @@ fn build_maven(project_dir: &Path) -> Result<PathBuf, PackError> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
+        let formatted = crate::diagnostic::format_build_error(
+            &stderr,
+            &stdout,
+            BuildSystem::Maven,
+            project_dir,
+        );
         return Err(PackError::BuildFailed(format!(
-            "mvn package failed:\n{stderr}\n{stdout}"
+            "mvn package failed:\n{formatted}"
         )));
     }
 
@@ -505,8 +525,15 @@ fn build_gradle(project_dir: &Path) -> Result<PathBuf, PackError> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let formatted = crate::diagnostic::format_build_error(
+            &stderr,
+            &stdout,
+            BuildSystem::Gradle,
+            project_dir,
+        );
         return Err(PackError::BuildFailed(format!(
-            "{cmd_name} build failed:\n{stderr}"
+            "{cmd_name} build failed:\n{formatted}"
         )));
     }
 

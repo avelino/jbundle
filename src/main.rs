@@ -2,6 +2,7 @@ mod build;
 mod cli;
 mod config;
 mod detect;
+mod diagnostic;
 mod error;
 mod jlink;
 mod jvm;

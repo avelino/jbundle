@@ -22,4 +22,5 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 which = "8"
+regex = "1"
 zip = "2"
