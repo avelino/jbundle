@@ -54,6 +54,24 @@ jbundle build --input ./target/app.jar --output ./dist/my-app
 
 The generated binary is a shell stub + tar.gz payload. On first execution it extracts to `~/.jbundle/cache/` (cached by content hash), then runs `java -jar` from the minimal runtime. Subsequent runs skip extraction entirely.
 
+## Build Error Diagnostics
+
+When a build fails, jbundle parses the compiler output and displays structured diagnostics with source context — similar to `rustc`:
+
+```
+error: Unable to resolve symbol: prntln
+ --> src/example/core.clj:9:5
+   |
+ 7 | (defn process-data [data]
+ 8 |   (let [result (map inc data)]
+ 9 |     (prntln "Processing:" result)
+   |     ^^^^^^^ symbol not found
+10 |     (reduce + result)))
+   |
+```
+
+Supported for all build systems (Clojure, Maven, Gradle/Kotlin). Falls back to raw error output when the format is not recognized.
+
 ## Installation
 
 ### From source
