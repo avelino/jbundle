@@ -30,7 +30,13 @@ pub fn format_build_error(
     let diagnostics = parser::parse(stderr, stdout, system);
 
     if diagnostics.is_empty() {
-        return stderr.to_string();
+        // Fallback: return combined stderr+stdout since some build systems
+        // (Maven, Gradle) print errors to stdout
+        let stdout = stdout.trim();
+        if stdout.is_empty() {
+            return stderr.to_string();
+        }
+        return format!("{stderr}\n{stdout}");
     }
 
     let mut output = String::new();
@@ -125,6 +131,17 @@ mod tests {
 
         let result = format_build_error(stderr, "", BuildSystem::DepsEdn, dir.path());
         assert_eq!(result, stderr);
+    }
+
+    #[test]
+    fn format_build_error_fallback_includes_stdout() {
+        let dir = tempdir().unwrap();
+        let stderr = "BUILD FAILURE";
+        let stdout = "Plugin error: missing configuration for surefire";
+
+        let result = format_build_error(stderr, stdout, BuildSystem::Maven, dir.path());
+        assert!(result.contains(stderr));
+        assert!(result.contains(stdout));
     }
 
     #[test]
