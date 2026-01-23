@@ -103,6 +103,6 @@ jobs:
           for binary in dist/*; do
             name=$(basename "$binary")
             echo "::group::Running $name"
-            "$binary" --test
+            "$binary"
             echo "::endgroup::"
           done

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 #[derive(Debug, thiserror::Error)]
 pub enum PackError {
     #[error(
-        "no build system found in {0} (expected deps.edn, project.clj, pom.xml, or build.gradle)"
+        "no build system found in {0} (expected deps.edn, project.clj, pom.xml, build.gradle, or build.gradle.kts)"
     )]
     NoBuildSystem(PathBuf),
 

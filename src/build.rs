@@ -578,6 +578,11 @@ fn find_best_jar(dir: &Path) -> Option<PathBuf> {
         jars.reverse();
 
         if let Some(jar) = jars.into_iter().next() {
+            tracing::warn!(
+                "no uber/standalone JAR found, using '{}'. If the app has external dependencies, \
+                 configure your build to produce a fat JAR (maven-shade-plugin, shadow jar, etc.)",
+                jar.file_name().unwrap_or_default().to_string_lossy()
+            );
             return Some(jar);
         }
     }
