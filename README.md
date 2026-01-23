@@ -1,41 +1,41 @@
-# clj-pack
+# jbundle
 
 Package JVM applications (Clojure, Java) into self-contained binaries. No JVM installation required to run the output.
 
 ```
-project/jar → clj-pack → single binary (runs anywhere)
+project/jar → jbundle → single binary (runs anywhere)
 ```
 
 ## Why?
 
 Deploying JVM apps usually means shipping a JAR and requiring a JVM on the target machine. The common solution is GraalVM native-image, but it brings its own set of problems: long compilation times, reflection configuration headaches, incompatible libraries, and a complex toolchain.
 
-`clj-pack` is a practical alternative. It bundles a minimal JVM runtime (via `jlink`) with your uberjar into a single executable — zero external dependencies, everything included in the binary. No GraalVM setup, no reflection configs, no library compatibility issues. Your app runs exactly as it does in development.
+`jbundle` is a practical alternative. It bundles a minimal JVM runtime (via `jlink`) with your uberjar into a single executable — zero external dependencies, everything included in the binary. No GraalVM setup, no reflection configs, no library compatibility issues. Your app runs exactly as it does in development.
 
 The result: one file, zero runtime dependencies, full JVM compatibility, instant startup on second run.
 
-### clj-pack vs GraalVM native-image
+### jbundle vs GraalVM native-image
 
-| | clj-pack | GraalVM native-image |
+| | jbundle | GraalVM native-image |
 |---|---|---|
 | Compatibility | 100% JVM compatible | Requires reflection config, some libs unsupported |
 | Build time | Fast (jlink + packaging) | Slow (ahead-of-time compilation) |
 | Binary size | ~30-50 MB | ~20-40 MB |
 | First run | Extracts once, cached | Instant |
-| Setup | Just `clj-pack` | GraalVM + native-image + config |
+| Setup | Just `jbundle` | GraalVM + native-image + config |
 | Debugging | Standard JVM tooling | Limited |
 
 ## Quick Start
 
 ```sh
 # Build from a Clojure project (deps.edn or project.clj)
-clj-pack build --input ./my-clojure-app --output ./dist/my-app
+jbundle build --input ./my-clojure-app --output ./dist/my-app
 
 # Build from a Java project (pom.xml or build.gradle)
-clj-pack build --input ./my-java-app --output ./dist/my-app
+jbundle build --input ./my-java-app --output ./dist/my-app
 
 # Build from a pre-built JAR
-clj-pack build --input ./target/app.jar --output ./dist/my-app
+jbundle build --input ./target/app.jar --output ./dist/my-app
 
 # Run it — no Java needed on the system
 ./dist/my-app
@@ -50,15 +50,15 @@ clj-pack build --input ./target/app.jar --output ./dist/my-app
 5. Create minimal runtime with jlink (~30-50 MB)
 6. Pack runtime + JAR into self-contained binary
 
-The generated binary is a shell stub + tar.gz payload. On first execution it extracts to `~/.clj-pack/cache/` (cached by content hash), then runs `java -jar` from the minimal runtime. Subsequent runs skip extraction entirely.
+The generated binary is a shell stub + tar.gz payload. On first execution it extracts to `~/.jbundle/cache/` (cached by content hash), then runs `java -jar` from the minimal runtime. Subsequent runs skip extraction entirely.
 
 ## Installation
 
 ### From source
 
 ```sh
-git clone https://github.com/avelino/clj-pack.git
-cd clj-pack
+git clone https://github.com/avelino/jbundle.git
+cd jbundle
 cargo install --path .
 ```
 
@@ -66,19 +66,19 @@ cargo install --path .
 
 ```sh
 # Build with specific Java version
-clj-pack build --input . --output ./dist/app --java-version 21
+jbundle build --input . --output ./dist/app --java-version 21
 
 # Cross-platform target
-clj-pack build --input . --output ./dist/app --target linux-x64
+jbundle build --input . --output ./dist/app --target linux-x64
 
 # Pass JVM arguments
-clj-pack build --input . --output ./dist/app --jvm-args "-Xmx512m"
+jbundle build --input . --output ./dist/app --jvm-args "-Xmx512m"
 
 # Show cache info
-clj-pack info
+jbundle info
 
 # Clean cache
-clj-pack clean
+jbundle clean
 ```
 
 ### Supported platforms
@@ -119,6 +119,9 @@ cargo run -- build --input ./example/clojure-deps --output ./dist/app
 cargo run -- build --input ./example/clojure-lein --output ./dist/app
 cargo run -- build --input ./example/java-pom --output ./dist/app
 cargo run -- build --input ./example/java-gradle --output ./dist/app
+
+# Or after installing
+jbundle build --input ./example/clojure-deps --output ./dist/app
 
 # Run the generated binary
 ./dist/app

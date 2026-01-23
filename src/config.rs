@@ -98,7 +98,7 @@ impl BuildConfig {
                 "cannot determine home directory",
             ))
         })?;
-        Ok(home.join(".clj-pack").join("cache"))
+        Ok(home.join(".jbundle").join("cache"))
     }
 }
 
@@ -165,6 +165,6 @@ mod tests {
     #[test]
     fn cache_dir_ends_with_expected_path() {
         let cache = BuildConfig::cache_dir().unwrap();
-        assert!(cache.ends_with(".clj-pack/cache"));
+        assert!(cache.ends_with(".jbundle/cache"));
     }
 }

@@ -86,7 +86,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build clj-pack
+      - name: Build jbundle
         run: cargo build --release
 
       - name: Build all examples
@@ -94,7 +94,7 @@ jobs:
           for example_dir in example/*/; do
             name=$(basename "$example_dir")
             echo "::group::Building $name"
-            ./target/release/clj-pack build --input "$example_dir" --output "./dist/$name"
+            ./target/release/jbundle build --input "$example_dir" --output "./dist/$name"
             echo "::endgroup::"
           done
 

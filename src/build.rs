@@ -7,7 +7,7 @@ use crate::error::PackError;
 fn ensure_command_exists(cmd: &str) -> Result<(), PackError> {
     which::which(cmd).map_err(|_| {
         PackError::BuildFailed(format!(
-            "command '{cmd}' not found in PATH. Please install it before running clj-pack."
+            "command '{cmd}' not found in PATH. Please install it before running jbundle."
         ))
     })?;
     Ok(())
