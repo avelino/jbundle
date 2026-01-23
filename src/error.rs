@@ -37,4 +37,16 @@ pub enum PackError {
 
     #[error("shrink failed: {0}")]
     ShrinkFailed(String),
+
+    #[error(
+        "project requires Java {required}+ but --java-version is {configured}\n  \
+         Detected: class file version {class_version} (Java {required}) in {class_file}\n  \
+         Fix: use --java-version {required} or higher"
+    )]
+    JavaVersionMismatch {
+        required: u8,
+        configured: u8,
+        class_version: u16,
+        class_file: String,
+    },
 }

@@ -25,9 +25,9 @@ pub enum Command {
         #[arg(short, long, default_value = "./dist/app")]
         output: PathBuf,
 
-        /// Java version (11, 17, 21)
-        #[arg(long, default_value = "21")]
-        java_version: u8,
+        /// Java version (11, 17, 21). Auto-detected from JAR if not specified.
+        #[arg(long)]
+        java_version: Option<u8>,
 
         /// Target platform (linux-x64, linux-aarch64, macos-x64, macos-aarch64)
         #[arg(long)]

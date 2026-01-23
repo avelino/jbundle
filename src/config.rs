@@ -83,6 +83,7 @@ pub struct BuildConfig {
     pub input: PathBuf,
     pub output: PathBuf,
     pub java_version: u8,
+    pub java_version_explicit: bool,
     pub target: Target,
     pub jvm_args: Vec<String>,
     pub shrink: bool,

@@ -7,6 +7,7 @@ mod jlink;
 mod jvm;
 mod pack;
 mod shrink;
+mod validate;
 
 use std::path::PathBuf;
 
@@ -67,10 +68,14 @@ async fn main() -> Result<()> {
                 None => Target::current(),
             };
 
+            let java_version_explicit = java_version.is_some();
+            let java_version = java_version.unwrap_or(21);
+
             let config = BuildConfig {
                 input: std::fs::canonicalize(&input).unwrap_or_else(|_| PathBuf::from(&input)),
                 output: PathBuf::from(&output),
                 java_version,
+                java_version_explicit,
                 target,
                 jvm_args,
                 shrink,
@@ -137,10 +142,18 @@ async fn run_build(config: BuildConfig) -> Result<()> {
         jar_path
     };
 
+    // Step 1.7: Validate/detect Java version
+    let java_version = validate::resolve_java_version(
+        &jar_path,
+        config.java_version,
+        config.java_version_explicit,
+        &mp,
+    )?;
+
     // Step 2: Ensure JDK
-    let sp = spinner(&mp, &format!("Ensuring JDK {}...", config.java_version));
-    let jdk_path = jvm::ensure_jdk(config.java_version, &config.target, &mp).await?;
-    finish_spinner(&sp, &format!("JDK {} ready", config.java_version));
+    let sp = spinner(&mp, &format!("Ensuring JDK {}...", java_version));
+    let jdk_path = jvm::ensure_jdk(java_version, &config.target, &mp).await?;
+    finish_spinner(&sp, &format!("JDK {} ready", java_version));
 
     // Step 3: Detect modules
     let sp = spinner(&mp, "Detecting Java modules...");
