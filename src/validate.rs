@@ -212,7 +212,7 @@ mod tests {
     #[test]
     fn skips_multi_release_entries() {
         let jar = create_test_jar(&[
-            ("com/example/Main.class", 55),           // Java 11
+            ("com/example/Main.class", 55),             // Java 11
             ("META-INF/versions/21/com/Foo.class", 65), // multi-release, should be skipped
         ]);
         let mp = MultiProgress::new();
