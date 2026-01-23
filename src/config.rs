@@ -6,6 +6,8 @@ use crate::error::PackError;
 pub enum BuildSystem {
     DepsEdn,
     Leiningen,
+    Maven,
+    Gradle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

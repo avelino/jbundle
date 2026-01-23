@@ -61,3 +61,48 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release
+
+  examples:
+    name: Examples
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Clojure CLI
+        uses: DeLaGuardo/setup-clojure@12.5
+        with:
+          cli: latest
+          lein: latest
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build clj-pack
+        run: cargo build --release
+
+      - name: Build all examples
+        run: |
+          for example_dir in example/*/; do
+            name=$(basename "$example_dir")
+            echo "::group::Building $name"
+            ./target/release/clj-pack build --input "$example_dir" --output "./dist/$name"
+            echo "::endgroup::"
+          done
+
+      - name: Run all examples
+        run: |
+          for binary in dist/*; do
+            name=$(basename "$binary")
+            echo "::group::Running $name"
+            "$binary" --test
+            echo "::endgroup::"
+          done
