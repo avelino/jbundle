@@ -34,4 +34,7 @@ pub enum PackError {
 
     #[error("ZIP error: {0}")]
     Zip(#[from] zip::result::ZipError),
+
+    #[error("shrink failed: {0}")]
+    ShrinkFailed(String),
 }

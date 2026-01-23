@@ -6,6 +6,7 @@ mod error;
 mod jlink;
 mod jvm;
 mod pack;
+mod shrink;
 
 use std::path::PathBuf;
 
@@ -57,6 +58,7 @@ async fn main() -> Result<()> {
             java_version,
             target,
             jvm_args,
+            shrink,
         } => {
             let target = match target {
                 Some(t) => Target::from_str(&t).context(format!(
@@ -71,6 +73,7 @@ async fn main() -> Result<()> {
                 java_version,
                 target,
                 jvm_args,
+                shrink,
             };
 
             run_build(config).await?;
@@ -108,6 +111,30 @@ async fn run_build(config: BuildConfig) -> Result<()> {
             ),
         );
         jar
+    };
+
+    // Step 1.5: Shrink JAR (optional)
+    let jar_path = if config.shrink {
+        let sp = spinner(&mp, "Shrinking JAR...");
+        let result = shrink::shrink_jar(&jar_path)?;
+        if result.shrunk_size < result.original_size {
+            let reduction = result.original_size - result.shrunk_size;
+            let pct = (reduction as f64 / result.original_size as f64) * 100.0;
+            finish_spinner(
+                &sp,
+                &format!(
+                    "Shrunk: {} -> {} (-{:.0}%)",
+                    HumanBytes(result.original_size),
+                    HumanBytes(result.shrunk_size),
+                    pct,
+                ),
+            );
+        } else {
+            finish_spinner(&sp, "Shrink: no reduction (using original JAR)");
+        }
+        result.jar_path
+    } else {
+        jar_path
     };
 
     // Step 2: Ensure JDK
