@@ -36,6 +36,10 @@ pub enum Command {
         /// Extra JVM arguments passed to the application
         #[arg(long)]
         jvm_args: Vec<String>,
+
+        /// Shrink the uberjar by removing non-essential files and recompressing
+        #[arg(long)]
+        shrink: bool,
     },
 
     /// Clean the clj-pack cache

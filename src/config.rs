@@ -85,6 +85,7 @@ pub struct BuildConfig {
     pub java_version: u8,
     pub target: Target,
     pub jvm_args: Vec<String>,
+    pub shrink: bool,
 }
 
 impl BuildConfig {
