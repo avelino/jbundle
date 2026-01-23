@@ -1,8 +1,8 @@
 [package]
-name = "clj-pack"
+name = "jbundle"
 version = "0.1.0"
 edition = "2021"
-description = "Package Clojure applications into self-contained binaries"
+description = "Package JVM applications into self-contained binaries"
 license = "MIT"
 
 [dependencies]

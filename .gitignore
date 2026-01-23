@@ -7,7 +7,16 @@ debug/
 /dist
 
 # Example build artifacts
-/example/target
+/example/*/target
+/example/*/.cpcache
+/example/*/build
+/example/*/.gradle
+/example/*/.lein-*
+/example/*/.nrepl-port
+
+# JVM artifacts
+*.jar
+*.class
 
 # IDE
 .idea/

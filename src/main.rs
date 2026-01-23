@@ -44,7 +44,7 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("clj_pack=warn".parse().unwrap()),
+                .add_directive("jbundle=warn".parse().unwrap()),
         )
         .with_target(false)
         .without_time()

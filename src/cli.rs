@@ -4,9 +4,9 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
-    name = "clj-pack",
+    name = "jbundle",
     version,
-    about = "Package Clojure apps into self-contained binaries"
+    about = "Package JVM apps into self-contained binaries"
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -15,9 +15,9 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Build a self-contained binary from a Clojure project or JAR
+    /// Build a self-contained binary from a JVM project or JAR
     Build {
-        /// Path to Clojure project directory or pre-built JAR file
+        /// Path to project directory or pre-built JAR file
         #[arg(short, long, default_value = ".")]
         input: PathBuf,
 
@@ -42,7 +42,7 @@ pub enum Command {
         shrink: bool,
     },
 
-    /// Clean the clj-pack cache
+    /// Clean the jbundle cache
     Clean,
 
     /// Show cache and configuration info

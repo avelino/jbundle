@@ -9,16 +9,16 @@ pub fn generate(payload_hash: &str, payload_size: u64, jvm_args: &[String]) -> S
         r#"#!/bin/sh
 set -e
 CACHE_ID="{payload_hash}"
-CACHE_DIR="${{HOME}}/.clj-pack/cache/${{CACHE_ID}}"
+CACHE_DIR="${{HOME}}/.jbundle/cache/${{CACHE_ID}}"
 PAYLOAD_SIZE={payload_size}
 
 cat >&2 <<'BANNER'
-       _  _                      _
-   ___| |(_)      _ __  __ _ ___| | __
-  / __| || |_____| '_ \/ _` / __| |/ /
- | (__| || |_____| |_) | (_| \__ \   <
-  \___|_|/ |     | .__/ \__,_|___/_|\_\
-       |__/      |_|
+   _ _                    _ _
+  (_) |__  _   _ _ __   __| | | ___
+  | | '_ \| | | | '_ \ / _` | |/ _ \
+  | | |_) | |_| | | | | (_| | |  __/
+ _/ |_.__/ \__,_|_| |_|\__,_|_|\___|
+|__/
 BANNER
 
 if [ ! -d "$CACHE_DIR/runtime" ]; then
@@ -79,6 +79,6 @@ mod tests {
     fn stub_contains_banner() {
         let stub = generate("abc", 100, &[]);
         assert!(stub.contains("BANNER"));
-        assert!(stub.contains("___| |(_)"));
+        assert!(stub.contains("(_) |__"));
     }
 }
