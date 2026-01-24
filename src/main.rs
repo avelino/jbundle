@@ -115,11 +115,7 @@ async fn main() -> Result<()> {
                     .unwrap_or(false);
 
             let profile_str = profile
-                .or_else(|| {
-                    project_config
-                        .as_ref()
-                        .and_then(|c| c.profile.clone())
-                })
+                .or_else(|| project_config.as_ref().and_then(|c| c.profile.clone()))
                 .unwrap_or_else(|| "server".to_string());
             let jvm_profile = JvmProfile::from_str(&profile_str)
                 .context(format!("invalid profile: {profile_str}"))?;
