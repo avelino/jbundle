@@ -42,8 +42,8 @@ pub enum Command {
         shrink: bool,
 
         /// JVM startup profile (cli: fast startup, server: throughput optimized)
-        #[arg(long, default_value = "server")]
-        profile: String,
+        #[arg(long)]
+        profile: Option<String>,
 
         /// Disable AppCDS archive generation
         #[arg(long)]

@@ -68,18 +68,18 @@ pub fn create_binary(opts: &PackOptions) -> Result<(), PackError> {
     // Write stub
     out_file.write_all(stub_script.as_bytes())?;
 
-    // Write runtime.tar.gz
-    let runtime_data = std::fs::read(&runtime_archive)?;
-    out_file.write_all(&runtime_data)?;
+    // Write runtime.tar.gz (streaming)
+    let mut runtime_file = std::fs::File::open(&runtime_archive)?;
+    std::io::copy(&mut runtime_file, &mut out_file)?;
 
-    // Write app.jar.gz (gzip compressed)
-    let app_data = std::fs::read(&app_gz_path)?;
-    out_file.write_all(&app_data)?;
+    // Write app.jar.gz (streaming)
+    let mut app_file = std::fs::File::open(&app_gz_path)?;
+    std::io::copy(&mut app_file, &mut out_file)?;
 
-    // Write CRaC checkpoint tar.gz (if present)
+    // Write CRaC checkpoint tar.gz (streaming, if present)
     if let Some(cp) = opts.crac_path {
-        let crac_data = std::fs::read(cp)?;
-        out_file.write_all(&crac_data)?;
+        let mut crac_file = std::fs::File::open(cp)?;
+        std::io::copy(&mut crac_file, &mut out_file)?;
     }
 
     drop(out_file);
@@ -95,10 +95,10 @@ pub fn create_binary(opts: &PackOptions) -> Result<(), PackError> {
 }
 
 fn compress_file(input: &Path, output: &Path) -> Result<(), PackError> {
-    let data = std::fs::read(input)?;
-    let file = std::fs::File::create(output)?;
-    let mut encoder = GzEncoder::new(file, Compression::default());
-    encoder.write_all(&data)?;
+    let mut src = std::fs::File::open(input)?;
+    let dst = std::fs::File::create(output)?;
+    let mut encoder = GzEncoder::new(dst, Compression::default());
+    std::io::copy(&mut src, &mut encoder)?;
     encoder.finish()?;
     Ok(())
 }

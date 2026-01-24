@@ -10,14 +10,24 @@ use crate::jvm::cache::jdk_bin;
 
 /// Create a CRaC checkpoint for instant restore.
 /// Returns the path to a tar.gz containing the checkpoint directory.
+/// Uses `runtime_dir` for java (jlinked runtime) and `jdk_path` for jcmd
+/// (which is not included in minimal jlinked runtimes).
 pub fn create_checkpoint(
     runtime_dir: &Path,
+    jdk_path: &Path,
     jar_path: &Path,
     work_dir: &Path,
 ) -> Result<PathBuf, PackError> {
     let java = jdk_bin(runtime_dir, "java");
-    let jcmd = jdk_bin(runtime_dir, "jcmd");
+    let jcmd = jdk_bin(jdk_path, "jcmd");
     let cr_dir = work_dir.join("cr");
+
+    if !jcmd.exists() {
+        return Err(PackError::CracCheckpointFailed(format!(
+            "jcmd not found at {}. CRaC requires jcmd from the full JDK",
+            jcmd.display()
+        )));
+    }
 
     // Verify CRaC support
     verify_crac_support(&java)?;
@@ -39,8 +49,8 @@ pub fn create_checkpoint(
     let pid = child.id();
 
     // Wait for warmup
-    tracing::info!("waiting for app warmup (5s)");
-    std::thread::sleep(Duration::from_secs(5));
+    tracing::info!("waiting for app warmup (10s)");
+    std::thread::sleep(Duration::from_secs(10));
 
     // Trigger checkpoint via jcmd
     tracing::info!("triggering CRaC checkpoint via jcmd");

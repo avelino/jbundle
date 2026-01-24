@@ -89,7 +89,8 @@ if [ "$CRAC_SIZE" -gt 0 ] 2>/dev/null && [ "$(uname)" = "Linux" ]; then
         mkdir -p "$CRAC_DIR"
         tail -c +$((STUB_SIZE + RT_SIZE + APP_SIZE + 1)) "$0" | head -c "$CRAC_SIZE" | tar xzf - -C "$CRAC_DIR"
     fi
-    exec "$RT_DIR/bin/java" -XX:CRaCRestoreFrom="$CRAC_DIR/cr" "$@" 2>/dev/null || true
+    "$RT_DIR/bin/java" -XX:CRaCRestoreFrom="$CRAC_DIR/cr" "$@" && exit 0
+    echo "warn: CRaC restore failed, falling back to standard startup" >&2
 fi
 
 # Launch with profile flags + AppCDS + user args

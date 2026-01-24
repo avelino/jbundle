@@ -23,9 +23,18 @@ pub fn create_runtime_archive(runtime_dir: &Path, work_dir: &Path) -> Result<Pat
 }
 
 pub fn hash_file(path: &Path) -> Result<String, PackError> {
-    let data = std::fs::read(path)?;
+    use std::io::Read;
+    let file = std::fs::File::open(path)?;
+    let mut reader = std::io::BufReader::new(file);
     let mut hasher = Sha256::new();
-    hasher.update(&data);
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = reader.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
     let hash = format!("{:x}", hasher.finalize());
     Ok(hash[..16].to_string())
 }

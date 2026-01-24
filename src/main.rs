@@ -114,14 +114,13 @@ async fn main() -> Result<()> {
                     .and_then(|c| c.shrink)
                     .unwrap_or(false);
 
-            let profile_str = if profile != "server" {
-                profile
-            } else {
-                project_config
-                    .as_ref()
-                    .and_then(|c| c.profile.clone())
-                    .unwrap_or(profile)
-            };
+            let profile_str = profile
+                .or_else(|| {
+                    project_config
+                        .as_ref()
+                        .and_then(|c| c.profile.clone())
+                })
+                .unwrap_or_else(|| "server".to_string());
             let jvm_profile = JvmProfile::from_str(&profile_str)
                 .context(format!("invalid profile: {profile_str}"))?;
 
@@ -242,7 +241,7 @@ async fn run_build(config: BuildConfig) -> Result<()> {
     // Step 5: CRaC checkpoint (optional)
     let crac_path = if config.crac {
         let sp = spinner(&mp, "Creating CRaC checkpoint...");
-        match crac::create_checkpoint(&runtime_path, &jar_path, temp_dir.path()) {
+        match crac::create_checkpoint(&runtime_path, &jdk_path, &jar_path, temp_dir.path()) {
             Ok(cp) => {
                 let cp_size = std::fs::metadata(&cp)?.len();
                 finish_spinner(&sp, &format!("CRaC: {} checkpoint", HumanBytes(cp_size)));
