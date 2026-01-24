@@ -101,6 +101,42 @@ jbundle info
 jbundle clean
 ```
 
+### Configuration file
+
+You can create an optional `jbundle.toml` in your project root to avoid repeating CLI flags:
+
+```toml
+# jbundle.toml
+java_version = 21
+target = "linux-x64"
+shrink = true
+jvm_args = ["-Xmx512m", "-XX:+UseZGC"]
+```
+
+All fields are optional. CLI flags always take precedence over the config file:
+
+```
+CLI flags > jbundle.toml > built-in defaults
+```
+
+### Supported JDK versions
+
+jbundle downloads JDK runtimes from [Adoptium](https://adoptium.net/). The `java_version` field (or `--java-version` flag) accepts the following versions:
+
+| Version | Type    | Status         |
+| ------- | ------- | -------------- |
+| `11`    | LTS     | Supported      |
+| `17`    | LTS     | Supported      |
+| `21`    | **LTS** | **Default**    |
+| `22`    | STS     | Supported      |
+| `23`    | STS     | Supported      |
+| `24`    | STS     | Supported      |
+| `25`    | LTS     | Supported      |
+
+LTS (Long-Term Support) versions are recommended for production. The default is `21` when not specified and not auto-detected from the JAR.
+
+> **Note:** Java 8 is not supported because jbundle relies on `jlink` and `jdeps`, which were introduced in Java 9.
+
 ### Supported platforms
 
 | Target          | Status    |

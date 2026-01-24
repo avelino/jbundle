@@ -7,6 +7,7 @@ mod error;
 mod jlink;
 mod jvm;
 mod pack;
+mod project_config;
 mod shrink;
 mod validate;
 
@@ -62,18 +63,55 @@ async fn main() -> Result<()> {
             jvm_args,
             shrink,
         } => {
+            let input_path =
+                std::fs::canonicalize(&input).unwrap_or_else(|_| PathBuf::from(&input));
+
+            let project_dir = if input_path.is_dir() {
+                input_path.clone()
+            } else {
+                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+            };
+
+            let project_config = project_config::load_project_config(&project_dir)?;
+
             let target = match target {
                 Some(t) => Target::from_str(&t).context(format!(
                     "invalid target: {t}. Use: linux-x64, linux-aarch64, macos-x64, macos-aarch64"
                 ))?,
-                None => Target::current(),
+                None => match project_config.as_ref().and_then(|c| c.target.as_deref()) {
+                    Some(t) => Target::from_str(t).context(format!(
+                        "invalid target in jbundle.toml: {t}. Use: linux-x64, linux-aarch64, macos-x64, macos-aarch64"
+                    ))?,
+                    None => Target::current(),
+                },
             };
 
-            let java_version_explicit = java_version.is_some();
-            let java_version = java_version.unwrap_or(21);
+            let java_version_explicit = java_version.is_some()
+                || project_config
+                    .as_ref()
+                    .and_then(|c| c.java_version)
+                    .is_some();
+            let java_version = java_version
+                .or(project_config.as_ref().and_then(|c| c.java_version))
+                .unwrap_or(21);
+
+            let jvm_args = if jvm_args.is_empty() {
+                project_config
+                    .as_ref()
+                    .and_then(|c| c.jvm_args.clone())
+                    .unwrap_or_default()
+            } else {
+                jvm_args
+            };
+
+            let shrink = shrink
+                || project_config
+                    .as_ref()
+                    .and_then(|c| c.shrink)
+                    .unwrap_or(false);
 
             let config = BuildConfig {
-                input: std::fs::canonicalize(&input).unwrap_or_else(|_| PathBuf::from(&input)),
+                input: input_path,
                 output: PathBuf::from(&output),
                 java_version,
                 java_version_explicit,
