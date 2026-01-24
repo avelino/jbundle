@@ -1,6 +1,8 @@
+mod appcds;
 mod build;
 mod cli;
 mod config;
+mod crac;
 mod detect;
 mod diagnostic;
 mod error;
@@ -18,7 +20,7 @@ use clap::Parser;
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressStyle};
 
 use cli::{Cli, Command};
-use config::{BuildConfig, Target};
+use config::{BuildConfig, JvmProfile, Target};
 
 fn spinner(mp: &MultiProgress, msg: &str) -> ProgressBar {
     let sp = mp.add(ProgressBar::new_spinner());
@@ -62,6 +64,9 @@ async fn main() -> Result<()> {
             target,
             jvm_args,
             shrink,
+            profile,
+            no_appcds,
+            crac,
         } => {
             let input_path =
                 std::fs::canonicalize(&input).unwrap_or_else(|_| PathBuf::from(&input));
@@ -110,6 +115,32 @@ async fn main() -> Result<()> {
                     .and_then(|c| c.shrink)
                     .unwrap_or(false);
 
+            let profile_str = if profile != "server" {
+                profile
+            } else {
+                project_config
+                    .as_ref()
+                    .and_then(|c| c.profile.clone())
+                    .unwrap_or(profile)
+            };
+            let jvm_profile = JvmProfile::from_str(&profile_str)
+                .context(format!("invalid profile: {profile_str}"))?;
+
+            let appcds = if no_appcds {
+                false
+            } else {
+                project_config
+                    .as_ref()
+                    .and_then(|c| c.appcds)
+                    .unwrap_or(true)
+            };
+
+            let crac = crac
+                || project_config
+                    .as_ref()
+                    .and_then(|c| c.crac)
+                    .unwrap_or(false);
+
             let config = BuildConfig {
                 input: input_path,
                 output: PathBuf::from(&output),
@@ -118,6 +149,9 @@ async fn main() -> Result<()> {
                 target,
                 jvm_args,
                 shrink,
+                profile: jvm_profile,
+                appcds,
+                crac,
             };
 
             run_build(config).await?;
@@ -206,9 +240,53 @@ async fn run_build(config: BuildConfig) -> Result<()> {
     let runtime_path = jlink::create_runtime(&jdk_path, &modules, temp_dir.path())?;
     finish_spinner(&sp, "Runtime created (jlink)");
 
-    // Step 5: Pack binary
+    // Step 5: Generate AppCDS archive (optional)
+    let appcds_path = if config.appcds {
+        let sp = spinner(&mp, "Generating AppCDS archive...");
+        match appcds::generate(&runtime_path, &jar_path, temp_dir.path()) {
+            Ok(jsa) => {
+                let jsa_size = std::fs::metadata(&jsa)?.len();
+                finish_spinner(&sp, &format!("AppCDS: {} generated", HumanBytes(jsa_size)));
+                Some(jsa)
+            }
+            Err(e) => {
+                finish_spinner(&sp, &format!("AppCDS: skipped ({e})"));
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Step 6: CRaC checkpoint (optional)
+    let crac_path = if config.crac {
+        let sp = spinner(&mp, "Creating CRaC checkpoint...");
+        match crac::create_checkpoint(&runtime_path, &jar_path, temp_dir.path()) {
+            Ok(cp) => {
+                let cp_size = std::fs::metadata(&cp)?.len();
+                finish_spinner(&sp, &format!("CRaC: {} checkpoint", HumanBytes(cp_size)));
+                Some(cp)
+            }
+            Err(e) => {
+                finish_spinner(&sp, &format!("CRaC: skipped ({e})"));
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Step 7: Pack binary
     let sp = spinner(&mp, "Packing binary...");
-    pack::create_binary(&runtime_path, &jar_path, &config.output, &config.jvm_args)?;
+    pack::create_binary(
+        &runtime_path,
+        &jar_path,
+        appcds_path.as_deref(),
+        crac_path.as_deref(),
+        &config.output,
+        &config.jvm_args,
+        &config.profile,
+    )?;
     let size = std::fs::metadata(&config.output)?.len();
     finish_spinner(
         &sp,

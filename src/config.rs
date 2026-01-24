@@ -3,6 +3,33 @@ use std::path::PathBuf;
 use crate::error::PackError;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub enum JvmProfile {
+    Cli,
+    Server,
+}
+
+impl JvmProfile {
+    pub fn flags(&self) -> Vec<&'static str> {
+        match self {
+            JvmProfile::Cli => vec![
+                "-XX:+TieredCompilation",
+                "-XX:TieredStopAtLevel=1",
+                "-XX:+UseSerialGC",
+            ],
+            JvmProfile::Server => vec![],
+        }
+    }
+
+    pub fn from_str(s: &str) -> Result<Self, PackError> {
+        match s {
+            "cli" => Ok(JvmProfile::Cli),
+            "server" => Ok(JvmProfile::Server),
+            other => Err(PackError::InvalidProfile(other.to_string())),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BuildSystem {
     DepsEdn,
     Leiningen,
@@ -89,6 +116,9 @@ pub struct BuildConfig {
     pub target: Target,
     pub jvm_args: Vec<String>,
     pub shrink: bool,
+    pub profile: JvmProfile,
+    pub appcds: bool,
+    pub crac: bool,
 }
 
 impl BuildConfig {
@@ -167,5 +197,30 @@ mod tests {
     fn cache_dir_ends_with_expected_path() {
         let cache = BuildConfig::cache_dir().unwrap();
         assert!(cache.ends_with(".jbundle/cache"));
+    }
+
+    #[test]
+    fn jvm_profile_cli_flags() {
+        let flags = JvmProfile::Cli.flags();
+        assert!(flags.contains(&"-XX:+TieredCompilation"));
+        assert!(flags.contains(&"-XX:TieredStopAtLevel=1"));
+        assert!(flags.contains(&"-XX:+UseSerialGC"));
+    }
+
+    #[test]
+    fn jvm_profile_server_flags_empty() {
+        let flags = JvmProfile::Server.flags();
+        assert!(flags.is_empty());
+    }
+
+    #[test]
+    fn jvm_profile_from_str_valid() {
+        assert_eq!(JvmProfile::from_str("cli").unwrap(), JvmProfile::Cli);
+        assert_eq!(JvmProfile::from_str("server").unwrap(), JvmProfile::Server);
+    }
+
+    #[test]
+    fn jvm_profile_from_str_invalid() {
+        assert!(JvmProfile::from_str("unknown").is_err());
     }
 }

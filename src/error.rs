@@ -43,6 +43,18 @@ pub enum PackError {
     #[error("shrink failed: {0}")]
     ShrinkFailed(String),
 
+    #[error("AppCDS generation failed: {0}")]
+    AppcdsGenerationFailed(String),
+
+    #[error("CRaC is not supported by this JDK")]
+    CracNotSupported,
+
+    #[error("CRaC checkpoint failed: {0}")]
+    CracCheckpointFailed(String),
+
+    #[error("invalid JVM profile: {0} (expected: cli, server)")]
+    InvalidProfile(String),
+
     #[error(
         "project requires Java {required}+ but --java-version is {configured}\n  \
          Detected: class file version {class_version} (Java {required}) in {class_file}\n  \

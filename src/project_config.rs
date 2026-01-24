@@ -12,6 +12,9 @@ pub struct ProjectConfig {
     pub target: Option<String>,
     pub shrink: Option<bool>,
     pub jvm_args: Option<Vec<String>>,
+    pub profile: Option<String>,
+    pub appcds: Option<bool>,
+    pub crac: Option<bool>,
 }
 
 pub fn load_project_config(dir: &Path) -> Result<Option<ProjectConfig>> {
@@ -43,6 +46,9 @@ java_version = 17
 target = "linux-x64"
 shrink = true
 jvm_args = ["-Xmx512m", "-XX:+UseZGC"]
+profile = "cli"
+appcds = false
+crac = true
 "#,
         )
         .unwrap();
@@ -55,6 +61,9 @@ jvm_args = ["-Xmx512m", "-XX:+UseZGC"]
             config.jvm_args,
             Some(vec!["-Xmx512m".to_string(), "-XX:+UseZGC".to_string()])
         );
+        assert_eq!(config.profile.as_deref(), Some("cli"));
+        assert_eq!(config.appcds, Some(false));
+        assert_eq!(config.crac, Some(true));
     }
 
     #[test]

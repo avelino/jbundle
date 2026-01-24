@@ -6,28 +6,20 @@ use sha2::{Digest, Sha256};
 
 use crate::error::PackError;
 
-pub fn create_payload(
-    runtime_dir: &Path,
-    jar_path: &Path,
-    work_dir: &Path,
-) -> Result<PathBuf, PackError> {
-    let payload_path = work_dir.join("payload.tar.gz");
-    let file = std::fs::File::create(&payload_path)?;
+pub fn create_runtime_archive(runtime_dir: &Path, work_dir: &Path) -> Result<PathBuf, PackError> {
+    let archive_path = work_dir.join("runtime.tar.gz");
+    let file = std::fs::File::create(&archive_path)?;
     let encoder = GzEncoder::new(file, Compression::default());
     let mut tar = tar::Builder::new(encoder);
 
-    tracing::info!("creating payload archive");
+    tracing::info!("creating runtime archive");
 
-    // Add runtime directory
-    tar.append_dir_all("runtime", runtime_dir)?;
-
-    // Add JAR as app.jar
-    tar.append_path_with_name(jar_path, "app.jar")?;
+    tar.append_dir_all(".", runtime_dir)?;
 
     let encoder = tar.into_inner()?;
     encoder.finish()?;
 
-    Ok(payload_path)
+    Ok(archive_path)
 }
 
 pub fn hash_file(path: &Path) -> Result<String, PackError> {
@@ -78,47 +70,40 @@ mod tests {
     }
 
     #[test]
-    fn create_payload_produces_tar_gz() {
+    fn create_runtime_archive_produces_tar_gz() {
         let dir = tempdir().unwrap();
         let runtime = dir.path().join("runtime");
         std::fs::create_dir_all(runtime.join("bin")).unwrap();
         std::fs::write(runtime.join("bin").join("java"), b"fake java").unwrap();
 
-        let jar = dir.path().join("app.jar");
-        std::fs::write(&jar, b"fake jar content").unwrap();
-
         let work = tempdir().unwrap();
-        let payload = create_payload(&runtime, &jar, work.path()).unwrap();
+        let archive = create_runtime_archive(&runtime, work.path()).unwrap();
 
-        assert!(payload.exists());
-        assert!(std::fs::metadata(&payload).unwrap().len() > 0);
+        assert!(archive.exists());
+        assert!(std::fs::metadata(&archive).unwrap().len() > 0);
     }
 
     #[test]
-    fn create_payload_contains_runtime_and_jar() {
+    fn create_runtime_archive_contains_bin() {
         let dir = tempdir().unwrap();
         let runtime = dir.path().join("runtime");
         std::fs::create_dir_all(runtime.join("bin")).unwrap();
         std::fs::write(runtime.join("bin").join("java"), b"fake").unwrap();
 
-        let jar = dir.path().join("myapp.jar");
-        std::fs::write(&jar, b"jar data").unwrap();
-
         let work = tempdir().unwrap();
-        let payload = create_payload(&runtime, &jar, work.path()).unwrap();
+        let archive = create_runtime_archive(&runtime, work.path()).unwrap();
 
-        let file = std::fs::File::open(&payload).unwrap();
+        let file = std::fs::File::open(&archive).unwrap();
         let decoder = flate2::read::GzDecoder::new(file);
-        let mut archive = tar::Archive::new(decoder);
+        let mut tar_archive = tar::Archive::new(decoder);
 
-        let entries: Vec<String> = archive
+        let entries: Vec<String> = tar_archive
             .entries()
             .unwrap()
             .filter_map(|e| e.ok())
             .map(|e| e.path().unwrap().to_string_lossy().to_string())
             .collect();
 
-        assert!(entries.iter().any(|e| e == "app.jar"));
-        assert!(entries.iter().any(|e| e.starts_with("runtime/")));
+        assert!(entries.iter().any(|e| e.contains("bin/java")));
     }
 }

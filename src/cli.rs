@@ -40,6 +40,18 @@ pub enum Command {
         /// Shrink the uberjar by removing non-essential files and recompressing
         #[arg(long)]
         shrink: bool,
+
+        /// JVM startup profile (cli: fast startup, server: throughput optimized)
+        #[arg(long, default_value = "server")]
+        profile: String,
+
+        /// Disable AppCDS archive generation
+        #[arg(long)]
+        no_appcds: bool,
+
+        /// Enable CRaC checkpoint for instant restore (Linux only)
+        #[arg(long)]
+        crac: bool,
     },
 
     /// Clean the jbundle cache
