@@ -43,9 +43,6 @@ pub enum PackError {
     #[error("shrink failed: {0}")]
     ShrinkFailed(String),
 
-    #[error("AppCDS generation failed: {0}")]
-    AppcdsGenerationFailed(String),
-
     #[error("CRaC is not supported by this JDK")]
     CracNotSupported,
 

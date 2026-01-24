@@ -23,7 +23,8 @@ The result: one file, zero runtime dependencies, full JVM compatibility, instant
 | Compatibility | 100% JVM compatible | Requires reflection config, some libs unsupported |
 | Build time | Fast (jlink + packaging) | Slow (ahead-of-time compilation) |
 | Binary size | ~30-50 MB | ~20-40 MB |
-| First run | Extracts once, cached | Instant |
+| Startup (warm) | ~200-350ms (AppCDS) / ~10-50ms (CRaC) | ~10-50ms |
+| First run | Extracts + generates CDS (~2-5s extra), cached | Instant |
 | Setup | Just `jbundle` | GraalVM + native-image + config |
 | Debugging | Standard JVM tooling | Limited |
 
@@ -50,9 +51,10 @@ jbundle build --input ./target/app.jar --output ./dist/my-app
 3. Download JDK from Adoptium (cached locally)
 4. Detect modules with jdeps
 5. Create minimal runtime with jlink (~30-50 MB)
-6. Pack runtime + JAR into self-contained binary
+6. Create CRaC checkpoint for instant restore (optional, Linux only)
+7. Pack into multi-layer binary (runtime + compressed app.jar)
 
-The generated binary is a shell stub + tar.gz payload. On first execution it extracts to `~/.jbundle/cache/` (cached by content hash), then runs `java -jar` from the minimal runtime. Subsequent runs skip extraction entirely.
+The generated binary uses a multi-layer format: `[stub] [runtime.tar.gz] [app.jar.gz] [crac.tar.gz?]`. Each layer is cached independently by content hash under `~/.jbundle/cache/`. Updating only your app code reuses the cached runtime — no re-extraction needed.
 
 ## Build Error Diagnostics
 
@@ -71,6 +73,58 @@ error: Unable to resolve symbol: prntln
 ```
 
 Supported for all build systems (Clojure, Maven, Gradle/Kotlin). Falls back to raw error output when the format is not recognized.
+
+## Startup Performance
+
+jbundle pursues GraalVM-level startup times without requiring AOT compilation. It combines multiple HotSpot-native techniques to make the **first run slightly slower** but **all subsequent runs significantly faster**.
+
+### First Run vs Subsequent Runs
+
+| | First run | Subsequent runs |
+|---|---|---|
+| What happens | Extracts runtime + app, JVM generates AppCDS archive | Everything cached, JVM loads pre-built class metadata |
+| Overhead | +2-5s (extraction + CDS generation) | None |
+| Startup (cli profile) | ~800-1500ms | ~200-350ms (**~60-75% faster**) |
+| Startup (server profile) | ~1000-2000ms | ~400-600ms (**~50-70% faster**) |
+| Startup (CRaC restore) | ~800-1500ms | ~10-50ms (**~95% faster**) |
+
+**Why the first run is slower:** The JVM needs to extract the compressed layers (runtime + app.jar) from the binary, then uses `-XX:+AutoCreateSharedArchive` to analyze which classes are loaded during startup and generates a shared archive (`.jsa` file). This is a one-time cost — the archive is cached alongside the app and reused on every subsequent execution.
+
+**Why subsequent runs are faster:** The JVM skips class file parsing, verification, and layout computation by loading pre-processed class metadata directly from the `.jsa` archive. Combined with profile-specific flags (C1-only compilation, SerialGC for CLI tools), startup overhead is reduced to the minimum the HotSpot JVM can achieve without AOT compilation.
+
+### JVM Profiles
+
+The `--profile` flag selects JVM flags tuned for different workloads:
+
+- **`server`** (default) — no extra flags, standard HotSpot behavior. Best for long-running services.
+- **`cli`** — tiered compilation at level 1 only + SerialGC. Optimized for short-lived CLI tools (~200-350ms startup after first run).
+
+### AppCDS (Class Data Sharing)
+
+Enabled by default (JDK 19+). On first execution, the JVM automatically generates a shared archive (`.jsa`) containing pre-processed class metadata for your application. Subsequent runs load this archive directly, skipping class file parsing and verification.
+
+The archive is stored at `~/.jbundle/cache/app-<hash>/app.jsa` and is tied to the specific app version. A new app version triggers a new archive generation on its first run.
+
+Disable with `--no-appcds` if you observe issues with class loading or want to minimize first-run overhead.
+
+### CRaC (Coordinated Restore at Checkpoint)
+
+Optional (`--crac`). On supported JDKs, jbundle creates a checkpoint of the running app after warmup. On subsequent runs, the JVM restores from checkpoint instead of starting from scratch — achieving ~10-50ms startup, comparable to native binaries.
+
+Requires a CRaC-enabled JDK (e.g., Azul Zulu with CRaC). Falls back to AppCDS + profile flags if restore fails. Linux only.
+
+### Layered Cache
+
+The binary is composed of independent layers, each cached by content hash:
+
+```
+~/.jbundle/cache/
+  rt-<hash>/       # JVM runtime (reused across app rebuilds)
+  app-<hash>/      # app.jar + app.jsa (generated on first run)
+  crac-<hash>/     # CRaC checkpoint (if enabled)
+```
+
+Changing only your application code does not re-extract the runtime. This matters for CI/CD and containers where the runtime layer (~30-50 MB) stays warm across deploys.
 
 ## Installation
 
@@ -94,6 +148,15 @@ jbundle build --input . --output ./dist/app --target linux-x64
 # Pass JVM arguments
 jbundle build --input . --output ./dist/app --jvm-args "-Xmx512m"
 
+# CLI profile (fast startup, optimized for short-lived tools)
+jbundle build --input . --output ./dist/app --profile cli
+
+# Disable AppCDS generation
+jbundle build --input . --output ./dist/app --no-appcds
+
+# Enable CRaC checkpoint (Linux, requires CRaC-enabled JDK)
+jbundle build --input . --output ./dist/app --crac
+
 # Show cache info
 jbundle info
 
@@ -111,6 +174,9 @@ java_version = 21
 target = "linux-x64"
 shrink = true
 jvm_args = ["-Xmx512m", "-XX:+UseZGC"]
+profile = "cli"       # "cli" or "server" (default: "server")
+appcds = true         # generate AppCDS archive (default: true)
+crac = false          # enable CRaC checkpoint (default: false)
 ```
 
 All fields are optional. CLI flags always take precedence over the config file:

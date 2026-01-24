@@ -1,4 +1,3 @@
-mod appcds;
 mod build;
 mod cli;
 mod config;
@@ -240,25 +239,7 @@ async fn run_build(config: BuildConfig) -> Result<()> {
     let runtime_path = jlink::create_runtime(&jdk_path, &modules, temp_dir.path())?;
     finish_spinner(&sp, "Runtime created (jlink)");
 
-    // Step 5: Generate AppCDS archive (optional)
-    let appcds_path = if config.appcds {
-        let sp = spinner(&mp, "Generating AppCDS archive...");
-        match appcds::generate(&runtime_path, &jar_path, temp_dir.path()) {
-            Ok(jsa) => {
-                let jsa_size = std::fs::metadata(&jsa)?.len();
-                finish_spinner(&sp, &format!("AppCDS: {} generated", HumanBytes(jsa_size)));
-                Some(jsa)
-            }
-            Err(e) => {
-                finish_spinner(&sp, &format!("AppCDS: skipped ({e})"));
-                None
-            }
-        }
-    } else {
-        None
-    };
-
-    // Step 6: CRaC checkpoint (optional)
+    // Step 5: CRaC checkpoint (optional)
     let crac_path = if config.crac {
         let sp = spinner(&mp, "Creating CRaC checkpoint...");
         match crac::create_checkpoint(&runtime_path, &jar_path, temp_dir.path()) {
@@ -276,17 +257,18 @@ async fn run_build(config: BuildConfig) -> Result<()> {
         None
     };
 
-    // Step 7: Pack binary
+    // Step 6: Pack binary
     let sp = spinner(&mp, "Packing binary...");
-    pack::create_binary(
-        &runtime_path,
-        &jar_path,
-        appcds_path.as_deref(),
-        crac_path.as_deref(),
-        &config.output,
-        &config.jvm_args,
-        &config.profile,
-    )?;
+    pack::create_binary(&pack::PackOptions {
+        runtime_dir: &runtime_path,
+        jar_path: &jar_path,
+        crac_path: crac_path.as_deref(),
+        output: &config.output,
+        jvm_args: &config.jvm_args,
+        profile: &config.profile,
+        appcds: config.appcds,
+        java_version,
+    })?;
     let size = std::fs::metadata(&config.output)?.len();
     finish_spinner(
         &sp,

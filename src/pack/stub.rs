@@ -5,12 +5,12 @@ pub struct StubParams<'a> {
     pub runtime_size: u64,
     pub app_hash: &'a str,
     pub app_size: u64,
-    pub cds_hash: Option<&'a str>,
-    pub cds_size: u64,
     pub crac_hash: Option<&'a str>,
     pub crac_size: u64,
     pub profile: &'a JvmProfile,
     pub jvm_args: &'a [String],
+    pub appcds: bool,
+    pub java_version: u8,
 }
 
 pub fn generate(params: &StubParams) -> String {
@@ -29,15 +29,23 @@ pub fn generate(params: &StubParams) -> String {
         format!(" {profile_flags}{jvm_args_str}")
     };
 
-    let cds_hash_val = params.cds_hash.unwrap_or("");
     let crac_hash_val = params.crac_hash.unwrap_or("");
 
     let runtime_hash = params.runtime_hash;
     let runtime_size = params.runtime_size;
     let app_hash = params.app_hash;
     let app_size = params.app_size;
-    let cds_size = params.cds_size;
     let crac_size = params.crac_size;
+
+    // AppCDS via AutoCreateSharedArchive (JDK 19+)
+    let cds_flags = if params.appcds && params.java_version >= 19 {
+        r#"
+# AppCDS: auto-create shared archive on first run (JDK 19+)
+CDS_FILE="$APP_DIR/app.jsa"
+CDS_FLAG="-XX:+AutoCreateSharedArchive -XX:SharedArchiveFile=$CDS_FILE""#
+    } else {
+        "\nCDS_FLAG=\"\""
+    };
 
     format!(
         r#"#!/bin/sh
@@ -45,7 +53,6 @@ set -e
 CACHE="${{HOME}}/.jbundle/cache"
 RT_HASH="{runtime_hash}"    RT_SIZE={runtime_size}
 APP_HASH="{app_hash}"   APP_SIZE={app_size}
-CDS_SIZE={cds_size}        CDS_HASH="{cds_hash_val}"
 CRAC_SIZE={crac_size}       CRAC_HASH="{crac_hash_val}"
 
 cat >&2 <<'BANNER'
@@ -57,7 +64,6 @@ cat >&2 <<'BANNER'
 |__/
 BANNER
 
-STUB_SIZE=$(( $(head -c 99999 "$0" 2>/dev/null | grep -c '' || wc -c < "$0") ))
 STUB_SIZE=__STUB_SIZE__
 
 # Extract runtime (only if not cached)
@@ -68,30 +74,20 @@ if [ ! -d "$RT_DIR/bin" ]; then
     tail -c +$((STUB_SIZE + 1)) "$0" | head -c "$RT_SIZE" | tar xzf - -C "$RT_DIR"
 fi
 
-# Extract app.jar (only if not cached)
+# Extract app.jar (decompress gzip, only if not cached)
 APP_DIR="$CACHE/app-$APP_HASH"
 if [ ! -f "$APP_DIR/app.jar" ]; then
     mkdir -p "$APP_DIR"
-    tail -c +$((STUB_SIZE + RT_SIZE + 1)) "$0" | head -c "$APP_SIZE" > "$APP_DIR/app.jar"
+    tail -c +$((STUB_SIZE + RT_SIZE + 1)) "$0" | head -c "$APP_SIZE" | gzip -d > "$APP_DIR/app.jar"
 fi
-
-# Extract AppCDS archive (if present and not cached)
-CDS_FLAG=""
-if [ "$CDS_SIZE" -gt 0 ] 2>/dev/null; then
-    CDS_DIR="$CACHE/cds-$CDS_HASH"
-    if [ ! -f "$CDS_DIR/app.jsa" ]; then
-        mkdir -p "$CDS_DIR"
-        tail -c +$((STUB_SIZE + RT_SIZE + APP_SIZE + 1)) "$0" | head -c "$CDS_SIZE" > "$CDS_DIR/app.jsa"
-    fi
-    CDS_FLAG="-XX:SharedArchiveFile=$CDS_DIR/app.jsa"
-fi
+{cds_flags}
 
 # CRaC restore (Linux only)
 if [ "$CRAC_SIZE" -gt 0 ] 2>/dev/null && [ "$(uname)" = "Linux" ]; then
     CRAC_DIR="$CACHE/crac-$CRAC_HASH"
     if [ ! -d "$CRAC_DIR/cr" ]; then
         mkdir -p "$CRAC_DIR"
-        tail -c +$((STUB_SIZE + RT_SIZE + APP_SIZE + CDS_SIZE + 1)) "$0" | head -c "$CRAC_SIZE" | tar xzf - -C "$CRAC_DIR"
+        tail -c +$((STUB_SIZE + RT_SIZE + APP_SIZE + 1)) "$0" | head -c "$CRAC_SIZE" | tar xzf - -C "$CRAC_DIR"
     fi
     exec "$RT_DIR/bin/java" -XX:CRaCRestoreFrom="$CRAC_DIR/cr" "$@" 2>/dev/null || true
 fi
@@ -134,12 +130,12 @@ mod tests {
             runtime_size: 100,
             app_hash: "app1",
             app_size: 200,
-            cds_hash: None,
-            cds_size: 0,
             crac_hash: None,
             crac_size: 0,
             profile: &JvmProfile::Server,
             jvm_args: &[],
+            appcds: true,
+            java_version: 21,
         }
     }
 
@@ -183,22 +179,36 @@ mod tests {
     }
 
     #[test]
-    fn stub_with_cds() {
+    fn stub_with_appcds_jdk21() {
         let p = StubParams {
-            cds_hash: Some("cds123"),
-            cds_size: 300,
+            appcds: true,
+            java_version: 21,
             ..params_default()
         };
         let stub = generate(&p);
-        assert!(stub.contains("CDS_SIZE=300"));
-        assert!(stub.contains("CDS_HASH=\"cds123\""));
+        assert!(stub.contains("AutoCreateSharedArchive"));
+        assert!(stub.contains("SharedArchiveFile"));
     }
 
     #[test]
-    fn stub_without_cds() {
-        let stub = generate(&params_default());
-        assert!(stub.contains("CDS_SIZE=0"));
-        assert!(stub.contains("CDS_HASH=\"\""));
+    fn stub_without_appcds() {
+        let p = StubParams {
+            appcds: false,
+            ..params_default()
+        };
+        let stub = generate(&p);
+        assert!(!stub.contains("AutoCreateSharedArchive"));
+    }
+
+    #[test]
+    fn stub_appcds_disabled_for_old_jdk() {
+        let p = StubParams {
+            appcds: true,
+            java_version: 17,
+            ..params_default()
+        };
+        let stub = generate(&p);
+        assert!(!stub.contains("AutoCreateSharedArchive"));
     }
 
     #[test]
@@ -277,6 +287,12 @@ mod tests {
         let stub = generate(&params_default());
         assert!(stub.contains("rt-$RT_HASH"));
         assert!(stub.contains("app-$APP_HASH"));
+    }
+
+    #[test]
+    fn stub_decompresses_app_jar() {
+        let stub = generate(&params_default());
+        assert!(stub.contains("gzip -d"));
     }
 
     #[test]
