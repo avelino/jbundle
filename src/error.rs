@@ -25,6 +25,9 @@ pub enum PackError {
     #[error("jlink failed: {0}")]
     JlinkFailed(String),
 
+    #[error("cache lock timeout: another process is downloading JDK {version} for {target}")]
+    CacheLockTimeout { version: u8, target: String },
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
