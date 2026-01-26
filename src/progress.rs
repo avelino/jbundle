@@ -41,12 +41,8 @@ impl Pipeline {
     pub fn finish_step(handle: &StepHandle, result: &str) {
         match handle {
             StepHandle::Spinner(pb) => {
-                pb.set_style(
-                    ProgressStyle::default_spinner()
-                        .template("  {msg}")
-                        .expect("invalid spinner template"),
-                );
-                pb.finish_with_message(format!("\x1b[32m✓\x1b[0m {result}"));
+                pb.finish_and_clear();
+                eprintln!("  \x1b[32m✓\x1b[0m {result}");
             }
             StepHandle::Plain => {
                 eprintln!(" {result}");
