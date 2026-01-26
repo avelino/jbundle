@@ -8,6 +8,7 @@ mod error;
 mod jlink;
 mod jvm;
 mod pack;
+mod progress;
 mod project_config;
 mod shrink;
 mod validate;
@@ -16,44 +17,32 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressStyle};
+use indicatif::HumanBytes;
 
 use cli::{Cli, Command};
 use config::{BuildConfig, JvmProfile, Target};
-
-fn spinner(mp: &MultiProgress, msg: &str) -> ProgressBar {
-    let sp = mp.add(ProgressBar::new_spinner());
-    sp.set_style(
-        ProgressStyle::default_spinner()
-            .template("  {spinner:.cyan} {msg}")
-            .expect("invalid spinner template"),
-    );
-    sp.set_message(msg.to_string());
-    sp.enable_steady_tick(std::time::Duration::from_millis(80));
-    sp
-}
-
-fn finish_spinner(sp: &ProgressBar, msg: &str) {
-    sp.set_style(
-        ProgressStyle::default_spinner()
-            .template("  {msg}")
-            .expect("invalid spinner template"),
-    );
-    sp.finish_with_message(format!("\x1b[32m✓\x1b[0m {msg}"));
-}
+use progress::Pipeline;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    // Extract verbose flag before initializing tracing
+    let verbose = matches!(&cli.command, Command::Build { verbose: true, .. });
+
+    let default_level = if verbose {
+        "jbundle=info"
+    } else {
+        "jbundle=warn"
+    };
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("jbundle=warn".parse().unwrap()),
+                .add_directive(default_level.parse().unwrap()),
         )
         .with_target(false)
         .without_time()
         .init();
-
-    let cli = Cli::parse();
 
     match cli.command {
         Command::Build {
@@ -66,6 +55,7 @@ async fn main() -> Result<()> {
             profile,
             no_appcds,
             crac,
+            verbose: _,
         } => {
             let input_path =
                 std::fs::canonicalize(&input).unwrap_or_else(|_| PathBuf::from(&input));
@@ -161,90 +151,102 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+fn calculate_steps(is_jar_input: bool, shrink: bool, crac: bool) -> usize {
+    let base = if is_jar_input { 1 } else { 2 }; // JAR ou detect+build
+    let shrink_step = if shrink { 1 } else { 0 };
+    let crac_step = if crac { 1 } else { 0 };
+    base + shrink_step + 4 + crac_step // +4 = JDK, jdeps, jlink, pack
+}
+
 async fn run_build(config: BuildConfig) -> Result<()> {
-    let mp = MultiProgress::new();
+    let is_jar_input = config.input.extension().is_some_and(|e| e == "jar");
+    let total_steps = calculate_steps(is_jar_input, config.shrink, config.crac);
+    let mut pipeline = Pipeline::new(total_steps);
+
     eprintln!();
 
-    // Step 1: Build uberjar
-    let jar_path = if config.input.extension().is_some_and(|e| e == "jar") {
-        let sp = spinner(&mp, "Using pre-built JAR");
+    // Step: Detect build system (only for project directories)
+    let (jar_path, detected_system) = if is_jar_input {
+        let step = pipeline.start_step("Using pre-built JAR");
         let jar = config.input.clone();
-        finish_spinner(&sp, &format!("JAR: {}", jar.display()));
-        jar
+        Pipeline::finish_step(&step, &format!("JAR: {}", jar.display()));
+        (jar, None)
     } else {
-        let sp = spinner(&mp, "Building uberjar...");
+        let step = pipeline.start_step("Detecting build system");
         let system = detect::detect_build_system(&config.input)?;
-        let jar = build::build_uberjar(&config.input, system)?;
-        finish_spinner(
-            &sp,
-            &format!(
-                "Uberjar: {}",
-                jar.file_name().unwrap_or_default().to_string_lossy()
-            ),
-        );
-        jar
-    };
+        Pipeline::finish_step(&step, &format!("{:?}", system));
 
-    // Step 1.5: Shrink JAR (optional)
+        let build_desc = build::build_command_description(system);
+        let step = pipeline.start_step(&format!("Building uberjar ({})", build_desc));
+        let jar = build::build_uberjar(&config.input, system)?;
+        Pipeline::finish_step(
+            &step,
+            &format!("{}", jar.file_name().unwrap_or_default().to_string_lossy()),
+        );
+        (jar, Some(system))
+    };
+    let _ = detected_system; // suppress unused warning
+
+    // Step: Shrink JAR (optional)
     let jar_path = if config.shrink {
-        let sp = spinner(&mp, "Shrinking JAR...");
+        let step = pipeline.start_step("Shrinking JAR");
         let result = shrink::shrink_jar(&jar_path)?;
         if result.shrunk_size < result.original_size {
             let reduction = result.original_size - result.shrunk_size;
             let pct = (reduction as f64 / result.original_size as f64) * 100.0;
-            finish_spinner(
-                &sp,
+            Pipeline::finish_step(
+                &step,
                 &format!(
-                    "Shrunk: {} -> {} (-{:.0}%)",
+                    "{} -> {} (-{:.0}%)",
                     HumanBytes(result.original_size),
                     HumanBytes(result.shrunk_size),
                     pct,
                 ),
             );
         } else {
-            finish_spinner(&sp, "Shrink: no reduction (using original JAR)");
+            Pipeline::finish_step(&step, "no reduction (using original)");
         }
         result.jar_path
     } else {
         jar_path
     };
 
-    // Step 1.7: Validate/detect Java version
+    // Validate/detect Java version (no step, inline)
     let java_version = validate::resolve_java_version(
         &jar_path,
         config.java_version,
         config.java_version_explicit,
-        &mp,
+        pipeline.mp(),
     )?;
 
-    // Step 2: Ensure JDK
-    let sp = spinner(&mp, &format!("Ensuring JDK {}...", java_version));
-    let jdk_path = jvm::ensure_jdk(java_version, &config.target, &mp).await?;
-    finish_spinner(&sp, &format!("JDK {} ready", java_version));
+    // Step: Download/ensure JDK
+    let step = pipeline.start_step(&format!("Downloading JDK {}", java_version));
+    let jdk_path = jvm::ensure_jdk(java_version, &config.target, pipeline.mp()).await?;
+    Pipeline::finish_step(&step, "ready");
 
-    // Step 3: Detect modules
-    let sp = spinner(&mp, "Detecting Java modules...");
+    // Step: Detect modules (jdeps)
+    let step = pipeline.start_step("Analyzing module dependencies");
     let temp_dir = tempfile::tempdir()?;
     let modules = jlink::detect_modules(&jdk_path, &jar_path)?;
     let module_count = modules.split(',').count();
-    finish_spinner(&sp, &format!("{module_count} modules detected"));
+    Pipeline::finish_step(&step, &format!("{} modules", module_count));
 
-    // Step 4: Create minimal runtime
-    let sp = spinner(&mp, "Creating minimal JVM runtime...");
+    // Step: Create minimal runtime (jlink)
+    let step = pipeline.start_step("Creating minimal runtime (jlink)");
     let runtime_path = jlink::create_runtime(&jdk_path, &modules, temp_dir.path())?;
-    finish_spinner(&sp, "Runtime created (jlink)");
+    Pipeline::finish_step(&step, "done");
 
-    // Step 5: CRaC checkpoint (optional)
+    // Step: CRaC checkpoint (optional)
     let crac_path = if config.crac {
-        let sp = spinner(&mp, "Creating CRaC checkpoint...");
+        let step = pipeline.start_step("Creating CRaC checkpoint");
         match crac::create_checkpoint(&runtime_path, &jdk_path, &jar_path, temp_dir.path()) {
             Ok(cp) => {
                 let cp_size = std::fs::metadata(&cp)?.len();
-                finish_spinner(&sp, &format!("CRaC: {} checkpoint", HumanBytes(cp_size)));
+                Pipeline::finish_step(&step, &format!("{} checkpoint", HumanBytes(cp_size)));
                 Some(cp)
             }
             Err(e) => {
-                finish_spinner(&sp, &format!("CRaC: skipped ({e})"));
+                Pipeline::finish_step(&step, &format!("skipped ({})", e));
                 None
             }
         }
@@ -252,8 +254,8 @@ async fn run_build(config: BuildConfig) -> Result<()> {
         None
     };
 
-    // Step 6: Pack binary
-    let sp = spinner(&mp, "Packing binary...");
+    // Step: Pack binary
+    let step = pipeline.start_step("Packing binary");
     pack::create_binary(&pack::PackOptions {
         runtime_dir: &runtime_path,
         jar_path: &jar_path,
@@ -265,15 +267,12 @@ async fn run_build(config: BuildConfig) -> Result<()> {
         java_version,
     })?;
     let size = std::fs::metadata(&config.output)?.len();
-    finish_spinner(
-        &sp,
-        &format!("Packed: {} ({})", config.output.display(), HumanBytes(size)),
+    Pipeline::finish_step(
+        &step,
+        &format!("{} ({})", config.output.display(), HumanBytes(size)),
     );
 
-    eprintln!(
-        "\n  \x1b[1;32m✓\x1b[0m Binary ready: {}\n",
-        config.output.display()
-    );
+    pipeline.finish(&config.output.display().to_string());
 
     Ok(())
 }

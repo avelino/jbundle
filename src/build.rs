@@ -22,6 +22,15 @@ pub fn build_uberjar(project_dir: &Path, system: BuildSystem) -> Result<PathBuf,
     }
 }
 
+pub fn build_command_description(system: BuildSystem) -> &'static str {
+    match system {
+        BuildSystem::DepsEdn => "clojure -T:build uber",
+        BuildSystem::Leiningen => "lein uberjar",
+        BuildSystem::Maven => "mvn package -DskipTests",
+        BuildSystem::Gradle => "gradle build -x test",
+    }
+}
+
 fn build_deps_edn(project_dir: &Path) -> Result<PathBuf, PackError> {
     let strategy = detect_deps_strategy(project_dir);
     let args = strategy.to_args();
