@@ -36,16 +36,11 @@ pub fn resolve_java_version(
         });
     }
 
-    let sp = mp.add(indicatif::ProgressBar::new_spinner());
-    sp.set_style(
-        indicatif::ProgressStyle::default_spinner()
-            .template("  {msg}")
-            .expect("invalid spinner template"),
-    );
-    sp.finish_with_message(format!(
-        "\x1b[33mℹ\x1b[0m Auto-detected Java {} (class version {} in {})",
+    let _ = mp; // suppress unused warning
+    eprintln!(
+        "  \x1b[33mℹ\x1b[0m Auto-detected Java {} (class version {} in {})",
         info.java_version, info.major_version, info.class_file
-    ));
+    );
 
     Ok(info.java_version)
 }
