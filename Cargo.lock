@@ -917,6 +917,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "console",
  "dirs",
  "flate2",
  "fs2",

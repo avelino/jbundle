@@ -52,6 +52,10 @@ pub enum Command {
         /// Enable CRaC checkpoint for instant restore (Linux only)
         #[arg(long)]
         crac: bool,
+
+        /// Enable verbose output (show build commands and details)
+        #[arg(short, long)]
+        verbose: bool,
     },
 
     /// Clean the jbundle cache
