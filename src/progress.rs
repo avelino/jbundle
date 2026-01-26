@@ -1,4 +1,5 @@
-use console::Term;
+use std::io::IsTerminal;
+
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 
 pub struct Pipeline {
@@ -14,7 +15,7 @@ impl Pipeline {
             mp: MultiProgress::new(),
             total: total_steps,
             current: 0,
-            is_tty: Term::stderr().is_term(),
+            is_tty: std::io::stderr().is_terminal(),
         }
     }
 

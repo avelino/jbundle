@@ -152,7 +152,7 @@ async fn main() -> Result<()> {
 }
 
 fn calculate_steps(is_jar_input: bool, shrink: bool, crac: bool) -> usize {
-    let base = if is_jar_input { 1 } else { 2 }; // JAR ou detect+build
+    let base = if is_jar_input { 1 } else { 2 }; // JAR or detect+build
     let shrink_step = if shrink { 1 } else { 0 };
     let crac_step = if crac { 1 } else { 0 };
     base + shrink_step + 4 + crac_step // +4 = JDK, jdeps, jlink, pack
@@ -166,11 +166,11 @@ async fn run_build(config: BuildConfig) -> Result<()> {
     eprintln!();
 
     // Step: Detect build system (only for project directories)
-    let (jar_path, detected_system) = if is_jar_input {
+    let jar_path = if is_jar_input {
         let step = pipeline.start_step("Using pre-built JAR");
         let jar = config.input.clone();
         Pipeline::finish_step(&step, &format!("JAR: {}", jar.display()));
-        (jar, None)
+        jar
     } else {
         let step = pipeline.start_step("Detecting build system");
         let system = detect::detect_build_system(&config.input)?;
@@ -183,9 +183,8 @@ async fn run_build(config: BuildConfig) -> Result<()> {
             &step,
             &format!("{}", jar.file_name().unwrap_or_default().to_string_lossy()),
         );
-        (jar, Some(system))
+        jar
     };
-    let _ = detected_system; // suppress unused warning
 
     // Step: Shrink JAR (optional)
     let jar_path = if config.shrink {
