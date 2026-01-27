@@ -26,3 +26,12 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 which = "8"
 regex = "1"
 zip = "2"
+
+[profile.release]
+strip = "symbols"
+split-debuginfo = "packed"
+debug = "full"
+codegen-units = 1
+incremental = false
+lto = true
+panic = "abort"
