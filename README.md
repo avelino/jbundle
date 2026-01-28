@@ -23,7 +23,7 @@ GraalVM native-image has slow compilations, complex reflection configuration, an
 
 ## Documentation
 
-Full documentation available at [avelino.run/projects/jbundle](https://avelino.run/projects/jbundle)
+[Full documentation](https://jbundle.avelino.run) available
 
 ## License
 
