@@ -8,6 +8,8 @@ Currently, jbundle is installed from source using Cargo (Rust's package manager)
 
 * [Rust toolchain](https://rustup.rs/) (1.70+)
 * Git
+* SSL development libraries
+  * Debian/Ubuntu: `sudo apt update && sudo apt install libssl-dev`
 
 ### Steps
 
