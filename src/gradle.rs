@@ -316,11 +316,7 @@ javaModules {
 "#;
         let includes = parse_includes(content);
         // Should be empty - includeBuild should not be captured, commented include should be ignored
-        assert!(
-            includes.is_empty(),
-            "Expected empty, got: {:?}",
-            includes
-        );
+        assert!(includes.is_empty(), "Expected empty, got: {:?}", includes);
     }
 
     #[test]
