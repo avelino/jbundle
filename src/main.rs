@@ -5,6 +5,7 @@ mod crac;
 mod detect;
 mod diagnostic;
 mod error;
+mod gradle;
 mod jlink;
 mod jvm;
 mod pack;
@@ -13,6 +14,7 @@ mod project_config;
 mod shrink;
 mod validate;
 
+use std::io::Write;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
@@ -21,6 +23,8 @@ use indicatif::HumanBytes;
 
 use cli::{Cli, Command};
 use config::{BuildConfig, JvmProfile, Target};
+use error::PackError;
+use gradle::Subproject;
 use progress::Pipeline;
 
 #[tokio::main]
@@ -55,6 +59,10 @@ async fn main() -> Result<()> {
             profile,
             no_appcds,
             crac,
+            gradle_project,
+            all,
+            modules,
+            jlink_runtime,
             verbose: _,
         } => {
             let input_path =
@@ -125,6 +133,26 @@ async fn main() -> Result<()> {
                     .and_then(|c| c.crac)
                     .unwrap_or(false);
 
+            // Gradle subproject selection (CLI > config file)
+            let gradle_project = gradle_project.or_else(|| {
+                project_config
+                    .as_ref()
+                    .and_then(|c| c.gradle_project.clone())
+            });
+
+            // Manual modules override (CLI > config file)
+            let modules_override = modules
+                .map(|m| m.split(',').map(|s| s.trim().to_string()).collect())
+                .or_else(|| project_config.as_ref().and_then(|c| c.modules.clone()));
+
+            // Jlink runtime path (CLI > config file)
+            let jlink_runtime = jlink_runtime.or_else(|| {
+                project_config
+                    .as_ref()
+                    .and_then(|c| c.jlink_runtime.as_ref())
+                    .map(PathBuf::from)
+            });
+
             let config = BuildConfig {
                 input: input_path,
                 output: PathBuf::from(&output),
@@ -136,9 +164,17 @@ async fn main() -> Result<()> {
                 profile: jvm_profile,
                 appcds,
                 crac,
+                gradle_project,
+                build_all: all,
+                modules_override,
+                jlink_runtime,
             };
 
-            run_build(config).await?;
+            if config.build_all {
+                run_build_all(config).await?;
+            } else {
+                run_build(config).await?;
+            }
         }
         Command::Clean => {
             run_clean()?;
@@ -146,6 +182,138 @@ async fn main() -> Result<()> {
         Command::Info => {
             run_info()?;
         }
+    }
+
+    Ok(())
+}
+
+/// Select a Gradle subproject based on CLI flag or interactive prompt.
+fn select_gradle_subproject<'a>(
+    app_subprojects: &'a [Subproject],
+    cli_selection: Option<&str>,
+) -> Result<&'a Subproject, PackError> {
+    // If CLI flag provided, find that subproject
+    if let Some(name) = cli_selection {
+        return app_subprojects
+            .iter()
+            .find(|s| s.name == name)
+            .ok_or_else(|| PackError::GradleSubprojectNotFound(name.to_string()));
+    }
+
+    // If only one application subproject, use it automatically
+    if app_subprojects.len() == 1 {
+        return Ok(&app_subprojects[0]);
+    }
+
+    // If no application subprojects found
+    if app_subprojects.is_empty() {
+        return Err(PackError::NoApplicationSubproject);
+    }
+
+    // Multiple subprojects: prompt user for selection
+    eprintln!("\nMultiple application subprojects found:");
+    for (i, sub) in app_subprojects.iter().enumerate() {
+        let desc = sub
+            .main_class
+            .as_deref()
+            .unwrap_or("(no main class detected)");
+        eprintln!("  [{}] {} - {}", i + 1, sub.name, desc);
+    }
+    eprintln!();
+    eprintln!(
+        "Tip: Add 'gradle_project = \"{}\"' to jbundle.toml to skip this prompt",
+        app_subprojects[0].name
+    );
+    eprintln!();
+    eprint!("Select subproject [1-{}]: ", app_subprojects.len());
+    std::io::stderr().flush().ok();
+
+    let mut input = String::new();
+    std::io::stdin()
+        .read_line(&mut input)
+        .map_err(|e| PackError::BuildFailed(format!("failed to read input: {e}")))?;
+
+    let choice: usize = input.trim().parse().map_err(|_| {
+        PackError::MultipleApplicationSubprojects(
+            app_subprojects.iter().map(|s| s.name.clone()).collect(),
+        )
+    })?;
+
+    if choice == 0 || choice > app_subprojects.len() {
+        return Err(PackError::MultipleApplicationSubprojects(
+            app_subprojects.iter().map(|s| s.name.clone()).collect(),
+        ));
+    }
+
+    Ok(&app_subprojects[choice - 1])
+}
+
+/// Build all application subprojects in a Gradle multi-project.
+async fn run_build_all(config: BuildConfig) -> Result<()> {
+    // Detect multi-project
+    let detected = detect::detect_build_system_enhanced(&config.input)?;
+
+    let app_subprojects = match detected {
+        detect::DetectedBuild::GradleMultiProject {
+            app_subprojects, ..
+        } => app_subprojects,
+        detect::DetectedBuild::Simple(_) => {
+            anyhow::bail!(
+                "--all flag requires a Gradle multi-project build. \
+                 No subprojects with application plugin found."
+            );
+        }
+    };
+
+    if app_subprojects.is_empty() {
+        anyhow::bail!("No application subprojects found in Gradle multi-project.");
+    }
+
+    eprintln!();
+    eprintln!(
+        "Building {} application subprojects:",
+        app_subprojects.len()
+    );
+    for sub in &app_subprojects {
+        let desc = sub
+            .main_class
+            .as_deref()
+            .unwrap_or("(no main class detected)");
+        eprintln!("  - {} ({})", sub.name, desc);
+    }
+    eprintln!();
+
+    let base_output = config.output.clone();
+    let mut built = Vec::new();
+
+    for sub in &app_subprojects {
+        // Create output path: base_output/subproject_name
+        let output = base_output.join(&sub.name);
+
+        // Create parent directory if needed
+        if let Some(parent) = output.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        eprintln!("━━━ Building {} ━━━", sub.name);
+
+        // Clone config with subproject-specific settings
+        let sub_config = BuildConfig {
+            gradle_project: Some(sub.name.clone()),
+            output,
+            build_all: false, // Prevent recursion
+            ..config.clone()
+        };
+
+        run_build(sub_config).await?;
+        built.push(sub.name.clone());
+        eprintln!();
+    }
+
+    eprintln!("━━━ Build complete ━━━");
+    eprintln!("Built {} binaries:", built.len());
+    for name in &built {
+        eprintln!("  - {}/{}", base_output.display(), name);
     }
 
     Ok(())
@@ -166,24 +334,51 @@ async fn run_build(config: BuildConfig) -> Result<()> {
     eprintln!();
 
     // Step: Detect build system (only for project directories)
-    let jar_path = if is_jar_input {
+    let (jar_path, detected_modules) = if is_jar_input {
         let step = pipeline.start_step("Using pre-built JAR");
         let jar = config.input.clone();
         Pipeline::finish_step(&step, &format!("JAR: {}", jar.display()));
-        jar
+        (jar, Vec::new())
     } else {
         let step = pipeline.start_step("Detecting build system");
-        let system = detect::detect_build_system(&config.input)?;
-        Pipeline::finish_step(&step, &format!("{:?}", system));
+        let detected = detect::detect_build_system_enhanced(&config.input)?;
 
-        let build_desc = build::build_command_description(system);
-        let step = pipeline.start_step(&format!("Building uberjar ({})", build_desc));
-        let jar = build::build_uberjar(&config.input, system)?;
-        Pipeline::finish_step(
-            &step,
-            &format!("{}", jar.file_name().unwrap_or_default().to_string_lossy()),
-        );
-        jar
+        match detected {
+            detect::DetectedBuild::Simple(system) => {
+                Pipeline::finish_step(&step, &format!("{:?}", system));
+
+                let build_desc = build::build_command_description(system);
+                let step = pipeline.start_step(&format!("Building uberjar ({})", build_desc));
+                let jar = build::build_uberjar(&config.input, system)?;
+                Pipeline::finish_step(
+                    &step,
+                    &format!("{}", jar.file_name().unwrap_or_default().to_string_lossy()),
+                );
+                (jar, Vec::new())
+            }
+            detect::DetectedBuild::GradleMultiProject {
+                project,
+                app_subprojects,
+            } => {
+                // Select subproject
+                let selected =
+                    select_gradle_subproject(&app_subprojects, config.gradle_project.as_deref())?;
+
+                Pipeline::finish_step(&step, &format!("Gradle multi-project ({})", selected.name));
+
+                // Extract modules from Gradle config
+                let gradle_modules = selected.add_modules.clone();
+
+                let build_desc = build::gradle_subproject_command_description(&selected.name);
+                let step = pipeline.start_step(&format!("Building uberjar ({})", build_desc));
+                let jar = build::build_gradle_subproject(&project.root, &selected.name)?;
+                Pipeline::finish_step(
+                    &step,
+                    &format!("{}", jar.file_name().unwrap_or_default().to_string_lossy()),
+                );
+                (jar, gradle_modules)
+            }
+        }
     };
 
     // Step: Shrink JAR (optional)
@@ -218,22 +413,64 @@ async fn run_build(config: BuildConfig) -> Result<()> {
         pipeline.mp(),
     )?;
 
+    // Check for existing jlink runtime to reuse
+    let existing_runtime = config.jlink_runtime.as_ref().and_then(|p| {
+        if p.exists() {
+            tracing::info!("using provided jlink runtime: {}", p.display());
+            Some(p.clone())
+        } else {
+            tracing::warn!("provided jlink runtime not found: {}", p.display());
+            None
+        }
+    });
+
     // Step: Download/ensure JDK
     let step = pipeline.start_step(&format!("Downloading JDK {}", java_version));
     let jdk_path = jvm::ensure_jdk(java_version, &config.target, pipeline.mp()).await?;
     Pipeline::finish_step(&step, "ready");
 
-    // Step: Detect modules (jdeps)
-    let step = pipeline.start_step("Analyzing module dependencies");
     let temp_dir = tempfile::tempdir()?;
-    let modules = jlink::detect_modules(&jdk_path, &jar_path)?;
-    let module_count = modules.split(',').count();
-    Pipeline::finish_step(&step, &format!("{} modules", module_count));
 
-    // Step: Create minimal runtime (jlink)
-    let step = pipeline.start_step("Creating minimal runtime (jlink)");
-    let runtime_path = jlink::create_runtime(&jdk_path, &modules, temp_dir.path())?;
-    Pipeline::finish_step(&step, "done");
+    // Step: Detect modules (jdeps) - skip if using manual override or existing runtime
+    let modules = if let Some(ref override_modules) = config.modules_override {
+        // Use manual module override
+        let step = pipeline.start_step("Using manual module override");
+        let modules = override_modules.join(",");
+        Pipeline::finish_step(&step, &format!("{} modules", override_modules.len()));
+        modules
+    } else {
+        // Detect modules with jdeps, combining with Gradle-detected modules
+        let step = pipeline.start_step("Analyzing module dependencies");
+        let mut modules = jlink::detect_modules(&jdk_path, &jar_path)?;
+
+        // Append Gradle-detected modules if any
+        if !detected_modules.is_empty() {
+            let extra = detected_modules.join(",");
+            if !modules.is_empty() {
+                modules.push(',');
+            }
+            modules.push_str(&extra);
+            // Deduplicate
+            let mut module_set: std::collections::HashSet<&str> = modules.split(',').collect();
+            modules = module_set.drain().collect::<Vec<_>>().join(",");
+        }
+
+        let module_count = modules.split(',').count();
+        Pipeline::finish_step(&step, &format!("{} modules", module_count));
+        modules
+    };
+
+    // Step: Create minimal runtime (jlink) - skip if reusing existing runtime
+    let runtime_path = if let Some(existing) = existing_runtime {
+        let step = pipeline.start_step("Reusing existing jlink runtime");
+        Pipeline::finish_step(&step, &format!("{}", existing.display()));
+        existing
+    } else {
+        let step = pipeline.start_step("Creating minimal runtime (jlink)");
+        let runtime = jlink::create_runtime(&jdk_path, &modules, temp_dir.path())?;
+        Pipeline::finish_step(&step, "done");
+        runtime
+    };
 
     // Step: CRaC checkpoint (optional)
     let crac_path = if config.crac {
