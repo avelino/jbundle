@@ -61,6 +61,12 @@ impl GradleProject {
             }
         }
 
+        // Fallback: if no subprojects found via include(), scan directories
+        // This handles custom plugins like JabRef's javaModules
+        if subprojects.is_empty() {
+            subprojects = scan_directories_for_subprojects(root);
+        }
+
         // Also check root project itself
         if has_build_kts || has_build {
             let build_path = if has_build_kts {
@@ -98,29 +104,86 @@ impl GradleProject {
     }
 }
 
-/// Parse include statements from settings.gradle(.kts).
-fn parse_includes(content: &str) -> Vec<String> {
-    let mut includes = Vec::new();
+/// Scan directories for subprojects with build.gradle(.kts).
+/// Used as fallback when include() parsing finds nothing (e.g., custom plugins).
+fn scan_directories_for_subprojects(root: &Path) -> Vec<Subproject> {
+    let mut subprojects = Vec::new();
 
-    // Match: include("project1", "project2") or include 'project1', 'project2'
-    // Also: include(":project1") or include ":project1"
-    let include_re = Regex::new(r#"include\s*\(?\s*["':]+([^"']+)["']"#).unwrap();
+    // Common directories to skip
+    const SKIP_DIRS: &[&str] = &[
+        "build",
+        "build-logic",
+        ".gradle",
+        ".git",
+        "gradle",
+        "buildSrc",
+        "node_modules",
+        "target",
+        ".idea",
+        "versions",
+        "test-support",
+    ];
 
-    for cap in include_re.captures_iter(content) {
-        if let Some(m) = cap.get(1) {
-            let name = m.as_str().trim_start_matches(':');
-            includes.push(name.to_string());
+    let entries = match std::fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(_) => return subprojects,
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        let dir_name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(name) => name,
+            None => continue,
+        };
+
+        // Skip common non-subproject directories and hidden directories
+        if SKIP_DIRS.contains(&dir_name) || dir_name.starts_with('.') {
+            continue;
+        }
+
+        // Check if directory has build.gradle(.kts)
+        if let Some(sub) = parse_subproject(dir_name, &path) {
+            subprojects.push(sub);
         }
     }
 
-    // Also match multi-line include blocks
-    let multi_include_re = Regex::new(r#"["':]+([a-zA-Z0-9_\-:]+)["']"#).unwrap();
+    subprojects
+}
 
-    // Find include block regions
+/// Parse include statements from settings.gradle(.kts).
+/// Note: This explicitly excludes `includeBuild()` which is for composite builds.
+fn parse_includes(content: &str) -> Vec<String> {
+    let mut includes = Vec::new();
+
+    // Regex to extract project names from quoted strings
+    let project_re = Regex::new(r#"["':]+([a-zA-Z0-9_\-:]+)["']"#).unwrap();
+
+    // Process line by line to properly handle comments
     for line in content.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("include") {
-            for cap in multi_include_re.captures_iter(trimmed) {
+
+        // Skip comments
+        if trimmed.starts_with("//") || trimmed.starts_with('#') || trimmed.starts_with('*') {
+            continue;
+        }
+
+        // Remove inline comments (// ...) before processing
+        let code = if let Some(pos) = trimmed.find("//") {
+            &trimmed[..pos]
+        } else {
+            trimmed
+        };
+
+        // Must start with "include" but not "includeBuild" or "includeFlat"
+        if code.starts_with("include")
+            && !code.starts_with("includeBuild")
+            && !code.starts_with("includeFlat")
+        {
+            for cap in project_re.captures_iter(code) {
                 if let Some(m) = cap.get(1) {
                     let name = m.as_str().trim_start_matches(':');
                     if !includes.contains(&name.to_string()) {
@@ -158,12 +221,14 @@ fn parse_subproject(name: &str, path: &Path) -> Option<Subproject> {
 fn parse_build_gradle(name: &str, path: &Path) -> Option<Subproject> {
     let content = std::fs::read_to_string(path).ok()?;
 
-    let has_application = content.contains("application")
-        && (content.contains("id(\"application\")")
-            || content.contains("id 'application'")
-            || content.contains("plugin: 'application'")
-            || content.contains("plugins {") && content.contains("application")
-            || content.contains("apply plugin:") && content.contains("application"));
+    // Check for application plugin with specific patterns
+    // Avoid false positives like `group = "application"`
+    let has_application = content.contains("id(\"application\")")
+        || content.contains("id 'application'")
+        || content.contains("id \"application\"")
+        || content.contains("plugin: 'application'")
+        || content.contains("apply plugin: 'application'")
+        || content.contains("apply plugin: \"application\"");
 
     let main_class = extract_main_class(&content);
     let add_modules = extract_add_modules(&content);
@@ -227,6 +292,36 @@ fn extract_add_modules(content: &str) -> Vec<String> {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn parse_includes_jabref_style() {
+        // JabRef uses javaModules plugin instead of include()
+        // The commented include line should NOT be parsed
+        let content = r#"
+pluginManagement {
+    includeBuild("build-logic")
+}
+
+plugins {
+    id("org.jabref.gradle.build")
+}
+
+rootProject.name = "JabRef"
+
+javaModules {
+    directory(".")
+    versions("versions")
+    // include("jablib", "jabkit", "jabgui", "jabsrv", "jabsrv-cli", "test-support", "versions")
+}
+"#;
+        let includes = parse_includes(content);
+        // Should be empty - includeBuild should not be captured, commented include should be ignored
+        assert!(
+            includes.is_empty(),
+            "Expected empty, got: {:?}",
+            includes
+        );
+    }
 
     #[test]
     fn parse_includes_kotlin_dsl() {
@@ -427,6 +522,98 @@ plugins {
         assert_eq!(apps.len(), 1);
         assert_eq!(apps[0].name, "app");
         assert_eq!(apps[0].main_class, Some("com.example.App".to_string()));
+    }
+
+    #[test]
+    fn parse_gradle_project_with_custom_plugin() {
+        // Simulates JabRef's javaModules plugin - no include() but directories exist
+        let dir = tempdir().unwrap();
+
+        // settings.gradle.kts with custom plugin (no include statements)
+        std::fs::write(
+            dir.path().join("settings.gradle.kts"),
+            r#"
+pluginManagement {
+    includeBuild("build-logic")
+}
+
+plugins {
+    id("org.jabref.gradle.build")
+}
+
+rootProject.name = "JabRef"
+
+javaModules {
+    directory(".")
+    versions("versions")
+}
+"#,
+        )
+        .unwrap();
+
+        // Root build.gradle.kts (no application)
+        std::fs::write(
+            dir.path().join("build.gradle.kts"),
+            r#"
+plugins {
+    id("java")
+}
+"#,
+        )
+        .unwrap();
+
+        // jabkit subproject with application
+        let jabkit_dir = dir.path().join("jabkit");
+        std::fs::create_dir_all(&jabkit_dir).unwrap();
+        std::fs::write(
+            jabkit_dir.join("build.gradle.kts"),
+            r#"
+plugins {
+    id("application")
+}
+application {
+    mainClass.set("org.jabref.cli.JabKit")
+}
+"#,
+        )
+        .unwrap();
+
+        // jablib subproject without application (library)
+        let jablib_dir = dir.path().join("jablib");
+        std::fs::create_dir_all(&jablib_dir).unwrap();
+        std::fs::write(
+            jablib_dir.join("build.gradle.kts"),
+            r#"
+plugins {
+    id("java-library")
+}
+"#,
+        )
+        .unwrap();
+
+        // build-logic should be skipped
+        let build_logic_dir = dir.path().join("build-logic");
+        std::fs::create_dir_all(&build_logic_dir).unwrap();
+        std::fs::write(
+            build_logic_dir.join("build.gradle.kts"),
+            r#"
+plugins {
+    id("java-gradle-plugin")
+}
+"#,
+        )
+        .unwrap();
+
+        let project = GradleProject::parse(dir.path()).unwrap();
+
+        // Should detect jabkit via directory scan fallback
+        let apps = project.application_subprojects();
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].name, "jabkit");
+        assert_eq!(
+            apps[0].main_class,
+            Some("org.jabref.cli.JabKit".to_string())
+        );
     }
 
     #[test]
