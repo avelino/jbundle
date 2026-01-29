@@ -13,7 +13,12 @@
 * [JVM Profiles](guide/profiles.md)
 * [Caching & Performance](guide/caching.md)
 * [Build Systems](guide/build-systems.md)
+* [Gradle Multi-Project](guide/gradle-multi-project.md)
 * [Error Diagnostics](guide/diagnostics.md)
+
+## Examples
+
+* [JabRef (Complex Gradle)](examples/jabref.md)
 
 ## Reference
 

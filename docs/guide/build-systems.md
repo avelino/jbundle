@@ -151,6 +151,20 @@ gradle build -x test
 # Then looks for *-all.jar in build/libs/
 ```
 
+### Multi-Project Builds
+
+For Gradle projects with multiple subprojects, jbundle auto-detects those with the `application` plugin. See [Gradle Multi-Project](gradle-multi-project.md) for details.
+
+Quick example:
+
+```bash
+# Build specific subproject
+jbundle build --input . --output ./dist/app --gradle-project app
+
+# Build all application subprojects
+jbundle build --input . --output ./dist --all
+```
+
 ## From Pre-built JAR
 
 Skip the build step entirely:

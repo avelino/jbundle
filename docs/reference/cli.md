@@ -25,8 +25,14 @@ jbundle build [OPTIONS] --input <PATH> --output <PATH>
 | `--target <TARGET>` | current | Target platform (see [Platforms](platforms.md)) |
 | `--profile <PROFILE>` | `server` | JVM profile (`cli` or `server`) |
 | `--jvm-args <ARGS>` | — | JVM arguments (e.g., `-Xmx512m`) |
+| `--shrink` | — | Shrink uberjar by removing non-essential files |
 | `--no-appcds` | — | Disable AppCDS generation |
 | `--crac` | — | Enable CRaC checkpoint (Linux only) |
+| `--gradle-project <NAME>` | — | Gradle subproject to build (multi-project) |
+| `--all` | — | Build all application subprojects (Gradle) |
+| `--modules <LIST>` | — | Manual module list, comma-separated |
+| `--jlink-runtime <PATH>` | — | Path to existing jlink runtime to reuse |
+| `-v, --verbose` | — | Enable verbose output |
 
 ### Examples
 
@@ -51,6 +57,18 @@ jbundle build --input ./target/app.jar --output ./dist/app
 
 # With CRaC (Linux)
 jbundle build --input . --output ./app --crac
+
+# Gradle multi-project: specific subproject
+jbundle build --input . --output ./dist/app --gradle-project app
+
+# Gradle multi-project: build all
+jbundle build --input . --output ./dist --all
+
+# Manual module specification
+jbundle build --input . --output ./app --modules java.base,java.sql,java.logging
+
+# Reuse existing jlink runtime
+jbundle build --input . --output ./app --jlink-runtime ./build/jlink
 ```
 
 ## jbundle info
