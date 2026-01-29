@@ -53,6 +53,22 @@ pub enum Command {
         #[arg(long)]
         crac: bool,
 
+        /// Gradle subproject to build (for multi-project builds)
+        #[arg(long)]
+        gradle_project: Option<String>,
+
+        /// Build all application subprojects (Gradle multi-project)
+        #[arg(long)]
+        all: bool,
+
+        /// Manual module list (bypasses jdeps detection, comma-separated)
+        #[arg(long)]
+        modules: Option<String>,
+
+        /// Path to existing jlink runtime to reuse
+        #[arg(long)]
+        jlink_runtime: Option<PathBuf>,
+
         /// Enable verbose output (show build commands and details)
         #[arg(short, long)]
         verbose: bool,

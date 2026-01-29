@@ -15,6 +15,12 @@ pub struct ProjectConfig {
     pub profile: Option<String>,
     pub appcds: Option<bool>,
     pub crac: Option<bool>,
+    /// Gradle subproject to build (for multi-project builds)
+    pub gradle_project: Option<String>,
+    /// Manual module override (bypasses jdeps detection)
+    pub modules: Option<Vec<String>>,
+    /// Path to existing jlink runtime to reuse
+    pub jlink_runtime: Option<String>,
 }
 
 pub fn load_project_config(dir: &Path) -> Result<Option<ProjectConfig>> {
@@ -49,6 +55,9 @@ jvm_args = ["-Xmx512m", "-XX:+UseZGC"]
 profile = "cli"
 appcds = false
 crac = true
+gradle_project = "jabkit"
+modules = ["java.base", "java.sql"]
+jlink_runtime = "./build/jlink"
 "#,
         )
         .unwrap();
@@ -64,6 +73,12 @@ crac = true
         assert_eq!(config.profile.as_deref(), Some("cli"));
         assert_eq!(config.appcds, Some(false));
         assert_eq!(config.crac, Some(true));
+        assert_eq!(config.gradle_project.as_deref(), Some("jabkit"));
+        assert_eq!(
+            config.modules,
+            Some(vec!["java.base".to_string(), "java.sql".to_string()])
+        );
+        assert_eq!(config.jlink_runtime.as_deref(), Some("./build/jlink"));
     }
 
     #[test]

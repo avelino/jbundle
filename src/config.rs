@@ -119,6 +119,14 @@ pub struct BuildConfig {
     pub profile: JvmProfile,
     pub appcds: bool,
     pub crac: bool,
+    /// Gradle subproject to build (for multi-project builds)
+    pub gradle_project: Option<String>,
+    /// Build all application subprojects (Gradle multi-project)
+    pub build_all: bool,
+    /// Manual module override (bypasses jdeps detection)
+    pub modules_override: Option<Vec<String>>,
+    /// Path to existing jlink runtime to reuse
+    pub jlink_runtime: Option<PathBuf>,
 }
 
 impl BuildConfig {

@@ -18,8 +18,18 @@ pub fn build_uberjar(project_dir: &Path, system: BuildSystem) -> Result<PathBuf,
         BuildSystem::DepsEdn => build_deps_edn(project_dir),
         BuildSystem::Leiningen => build_leiningen(project_dir),
         BuildSystem::Maven => build_maven(project_dir),
-        BuildSystem::Gradle => build_gradle(project_dir),
+        BuildSystem::Gradle => build_gradle(project_dir, None),
     }
+}
+
+/// Build uberjar for a specific Gradle subproject.
+pub fn build_gradle_subproject(project_dir: &Path, subproject: &str) -> Result<PathBuf, PackError> {
+    build_gradle(project_dir, Some(subproject))
+}
+
+/// Returns the build command description for a Gradle subproject.
+pub fn gradle_subproject_command_description(subproject: &str) -> String {
+    format!("gradle :{subproject}:shadowJar (or build)")
 }
 
 pub fn build_command_description(system: BuildSystem) -> &'static str {
@@ -516,7 +526,7 @@ fn build_maven(project_dir: &Path) -> Result<PathBuf, PackError> {
     find_uberjar(project_dir)
 }
 
-fn build_gradle(project_dir: &Path) -> Result<PathBuf, PackError> {
+fn build_gradle(project_dir: &Path, subproject: Option<&str>) -> Result<PathBuf, PackError> {
     let (cmd, cmd_name) = if project_dir.join("gradlew").exists() {
         ("./gradlew".to_string(), "gradlew")
     } else {
@@ -524,10 +534,51 @@ fn build_gradle(project_dir: &Path) -> Result<PathBuf, PackError> {
         ("gradle".to_string(), "gradle")
     };
 
-    tracing::info!("running: {cmd_name} build -x test");
+    // Determine the task to run based on subproject
+    let (task, search_dirs): (String, Vec<String>) = match subproject {
+        Some(sub) => {
+            // For subprojects, try shadowJar first (preferred for uber-jar), then build
+            let shadow_task = format!(":{sub}:shadowJar");
+            let build_task = format!(":{sub}:build");
+
+            // Try shadowJar first
+            tracing::info!("running: {cmd_name} {shadow_task} -x test");
+            let output = Command::new(&cmd)
+                .args([&shadow_task, "-x", "test"])
+                .current_dir(project_dir)
+                .output()
+                .map_err(|e| PackError::BuildFailed(format!("failed to run {cmd_name}: {e}")))?;
+
+            if output.status.success() {
+                let search = [
+                    format!("{sub}/build/libs"),
+                    format!("{}/build/libs", sub.replace(':', "/")),
+                ];
+                return find_jar_in_dirs(
+                    project_dir,
+                    &search.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                );
+            }
+
+            // Fall back to regular build
+            (
+                build_task,
+                vec![
+                    format!("{sub}/build/libs"),
+                    format!("{}/build/libs", sub.replace(':', "/")),
+                ],
+            )
+        }
+        None => (
+            "build".to_string(),
+            vec!["build/libs".to_string(), "target".to_string()],
+        ),
+    };
+
+    tracing::info!("running: {cmd_name} {task} -x test");
 
     let output = Command::new(&cmd)
-        .args(["build", "-x", "test"])
+        .args([&task, "-x", "test"])
         .current_dir(project_dir)
         .output()
         .map_err(|e| PackError::BuildFailed(format!("failed to run {cmd_name}: {e}")))?;
@@ -542,11 +593,14 @@ fn build_gradle(project_dir: &Path) -> Result<PathBuf, PackError> {
             project_dir,
         );
         return Err(PackError::BuildFailed(format!(
-            "{cmd_name} build failed:\n{formatted}"
+            "{cmd_name} {task} failed:\n{formatted}"
         )));
     }
 
-    find_jar_in_dirs(project_dir, &["build/libs", "target"])
+    find_jar_in_dirs(
+        project_dir,
+        &search_dirs.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+    )
 }
 
 fn find_jar_in_dirs(project_dir: &Path, dirs: &[&str]) -> Result<PathBuf, PackError> {

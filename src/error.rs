@@ -63,4 +63,13 @@ pub enum PackError {
         class_version: u16,
         class_file: String,
     },
+
+    #[error("no application subproject found in Gradle multi-project build")]
+    NoApplicationSubproject,
+
+    #[error("Gradle subproject '{0}' not found")]
+    GradleSubprojectNotFound(String),
+
+    #[error("multiple application subprojects found, please specify one with --gradle-project")]
+    MultipleApplicationSubprojects(Vec<String>),
 }
