@@ -559,13 +559,17 @@ fn build_gradle(project_dir: &Path, subproject: Option<&str>) -> Result<PathBuf,
                     format!("{sub}/build/libs"),
                     format!("{}/build/libs", sub.replace(':', "/")),
                 ];
-                return find_jar_in_dirs(
+                // Try to find the JAR; if not found, fall back to regular build
+                if let Ok(jar) = find_jar_in_dirs(
                     project_dir,
                     &search.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-                );
+                ) {
+                    return Ok(jar);
+                }
+                tracing::debug!("shadowJar succeeded but no JAR found, falling back to build");
             }
 
-            // Fall back to regular build
+            // Fall back to regular build (shadowJar failed or didn't produce JAR)
             (
                 build_task,
                 vec![
