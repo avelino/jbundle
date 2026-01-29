@@ -536,6 +536,11 @@ fn build_gradle(project_dir: &Path, subproject: Option<&str>) -> Result<PathBuf,
 
     // Determine the task to run based on subproject
     let (task, search_dirs): (String, Vec<String>) = match subproject {
+        // Root project with application plugin - use plain task names
+        Some("(root)") | None => (
+            "build".to_string(),
+            vec!["build/libs".to_string(), "target".to_string()],
+        ),
         Some(sub) => {
             // For subprojects, try shadowJar first (preferred for uber-jar), then build
             let shadow_task = format!(":{sub}:shadowJar");
@@ -569,10 +574,6 @@ fn build_gradle(project_dir: &Path, subproject: Option<&str>) -> Result<PathBuf,
                 ],
             )
         }
-        None => (
-            "build".to_string(),
-            vec!["build/libs".to_string(), "target".to_string()],
-        ),
     };
 
     tracing::info!("running: {cmd_name} {task} -x test");
