@@ -25,13 +25,13 @@ jbundle build [OPTIONS] --input <PATH> --output <PATH>
 | `--target <TARGET>` | current | Target platform (see [Platforms](platforms.md)) |
 | `--profile <PROFILE>` | `server` | JVM profile (`cli` or `server`) |
 | `--jvm-args <ARGS>` | — | JVM arguments (e.g., `-Xmx512m`) |
-| `--shrink` | — | Shrink uberjar by removing non-essential files |
+| `--shrink [true\|false]` | `false` | Shrink uberjar by removing non-essential files |
 | `--no-appcds` | — | Disable AppCDS generation |
 | `--crac` | — | Enable CRaC checkpoint (Linux only) |
 | `--gradle-project <NAME>` | — | Gradle subproject to build (multi-project) |
 | `--all` | — | Build all application subprojects (Gradle) |
 | `--modules <LIST>` | — | Manual module list, comma-separated |
-| `--jlink-runtime <PATH>` | — | Path to existing jlink runtime to reuse |
+| `--jlink-runtime <PATH>` | — | Path to existing jlink runtime to reuse (must contain `bin/java`) |
 | `-v, --verbose` | — | Enable verbose output |
 
 ### Examples
@@ -49,8 +49,14 @@ jbundle build --input . --output ./app --profile cli
 # Cross-compile for Linux
 jbundle build --input . --output ./app --target linux-x64
 
-# Multiple JVM arguments
-jbundle build --input . --output ./app --jvm-args "-Xmx512m -XX:+UseZGC"
+# Multiple JVM arguments (use server profile with custom GC)
+jbundle build --input . --output ./app --profile server --jvm-args "-Xmx512m -XX:+UseZGC"
+
+# Shrink the uberjar (remove non-essential files)
+jbundle build --input . --output ./app --shrink
+
+# Explicitly disable shrinking
+jbundle build --input . --output ./app --shrink false
 
 # From pre-built JAR
 jbundle build --input ./target/app.jar --output ./dist/app

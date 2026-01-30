@@ -8,6 +8,16 @@ pub enum JvmProfile {
     Server,
 }
 
+/// Known JVM garbage collector flags
+const GC_FLAGS: &[&str] = &[
+    "-XX:+UseSerialGC",
+    "-XX:+UseParallelGC",
+    "-XX:+UseG1GC",
+    "-XX:+UseZGC",
+    "-XX:+UseShenandoahGC",
+    "-XX:+UseEpsilonGC",
+];
+
 impl JvmProfile {
     pub fn flags(&self) -> Vec<&'static str> {
         match self {
@@ -27,6 +37,50 @@ impl JvmProfile {
             other => Err(PackError::InvalidProfile(other.to_string())),
         }
     }
+
+    /// Returns the GC flag used by this profile, if any
+    pub fn gc_flag(&self) -> Option<&'static str> {
+        match self {
+            JvmProfile::Cli => Some("-XX:+UseSerialGC"),
+            JvmProfile::Server => None,
+        }
+    }
+
+    /// Returns the profile name as a string
+    pub fn name(&self) -> &'static str {
+        match self {
+            JvmProfile::Cli => "cli",
+            JvmProfile::Server => "server",
+        }
+    }
+}
+
+/// Result of GC conflict detection
+#[derive(Debug)]
+pub struct GcConflict {
+    pub profile_gc: &'static str,
+    pub jvm_args_gc: String,
+    pub profile_name: &'static str,
+}
+
+/// Check for GC conflicts between profile and jvm_args
+pub fn detect_gc_conflict(profile: &JvmProfile, jvm_args: &[String]) -> Option<GcConflict> {
+    let profile_gc = profile.gc_flag()?;
+
+    // Find any GC flag in jvm_args that conflicts with profile
+    for arg in jvm_args {
+        for &gc_flag in GC_FLAGS {
+            if arg == gc_flag && gc_flag != profile_gc {
+                return Some(GcConflict {
+                    profile_gc,
+                    jvm_args_gc: arg.clone(),
+                    profile_name: profile.name(),
+                });
+            }
+        }
+    }
+
+    None
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -230,5 +284,51 @@ mod tests {
     #[test]
     fn jvm_profile_from_str_invalid() {
         assert!(JvmProfile::from_str("unknown").is_err());
+    }
+
+    #[test]
+    fn detect_gc_conflict_cli_with_zgc() {
+        let conflict = detect_gc_conflict(
+            &JvmProfile::Cli,
+            &["-Xmx512m".to_string(), "-XX:+UseZGC".to_string()],
+        );
+        assert!(conflict.is_some());
+        let c = conflict.unwrap();
+        assert_eq!(c.profile_gc, "-XX:+UseSerialGC");
+        assert_eq!(c.jvm_args_gc, "-XX:+UseZGC");
+    }
+
+    #[test]
+    fn detect_gc_conflict_cli_with_g1gc() {
+        let conflict = detect_gc_conflict(&JvmProfile::Cli, &["-XX:+UseG1GC".to_string()]);
+        assert!(conflict.is_some());
+    }
+
+    #[test]
+    fn detect_gc_conflict_server_no_conflict() {
+        let conflict = detect_gc_conflict(&JvmProfile::Server, &["-XX:+UseZGC".to_string()]);
+        assert!(conflict.is_none());
+    }
+
+    #[test]
+    fn detect_gc_conflict_cli_no_gc_in_args() {
+        let conflict = detect_gc_conflict(
+            &JvmProfile::Cli,
+            &["-Xmx512m".to_string(), "-Dapp.env=prod".to_string()],
+        );
+        assert!(conflict.is_none());
+    }
+
+    #[test]
+    fn detect_gc_conflict_cli_same_gc() {
+        // Same GC as profile should not be a conflict
+        let conflict = detect_gc_conflict(&JvmProfile::Cli, &["-XX:+UseSerialGC".to_string()]);
+        assert!(conflict.is_none());
+    }
+
+    #[test]
+    fn jvm_profile_gc_flag() {
+        assert_eq!(JvmProfile::Cli.gc_flag(), Some("-XX:+UseSerialGC"));
+        assert_eq!(JvmProfile::Server.gc_flag(), None);
     }
 }

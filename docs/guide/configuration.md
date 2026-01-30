@@ -61,14 +61,16 @@ jvm_args = ["-Xmx256m"]
 
 ### Microservice
 
-Standard server configuration:
+Standard server configuration with custom GC:
 
 ```toml
 # jbundle.toml
 java_version = 21
-profile = "server"
+profile = "server"  # Important: use "server" when specifying custom GC
 jvm_args = ["-Xmx1g", "-XX:+UseZGC"]
 ```
+
+> **Note:** When using a custom garbage collector like ZGC, always use `profile = "server"`. The `"cli"` profile includes `-XX:+UseSerialGC`, and the JVM cannot use multiple GCs simultaneously. jbundle will detect this conflict and fail with a helpful error message.
 
 ### Cross-Platform Build
 

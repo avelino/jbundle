@@ -22,7 +22,7 @@ use clap::Parser;
 use indicatif::HumanBytes;
 
 use cli::{Cli, Command};
-use config::{BuildConfig, JvmProfile, Target};
+use config::{detect_gc_conflict, BuildConfig, JvmProfile, Target};
 use error::PackError;
 use gradle::Subproject;
 use progress::Pipeline;
@@ -152,6 +152,19 @@ async fn main() -> Result<()> {
                     .and_then(|c| c.jlink_runtime.as_ref())
                     .map(PathBuf::from)
             });
+
+            // Check for GC conflicts between profile and jvm_args
+            if let Some(conflict) = detect_gc_conflict(&jvm_profile, &jvm_args) {
+                tracing::warn!(
+                    "GC conflict: profile '{}' uses {} but jvm_args contains {}. \
+                     The JVM cannot use multiple garbage collectors. \
+                     Consider using profile = \"server\" or removing {} from jvm_args.",
+                    conflict.profile_name,
+                    conflict.profile_gc,
+                    conflict.jvm_args_gc,
+                    conflict.jvm_args_gc
+                );
+            }
 
             let config = BuildConfig {
                 input: input_path,
