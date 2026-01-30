@@ -22,6 +22,14 @@ pub struct PackOptions<'a> {
 }
 
 pub fn create_binary(opts: &PackOptions) -> Result<(), PackError> {
+    // Validate output path is not a directory
+    if opts.output.is_dir() {
+        return Err(PackError::BuildFailed(format!(
+            "output path '{}' is a directory. Specify a file path like './dist/app' instead of './dist'",
+            opts.output.display()
+        )));
+    }
+
     let temp = tempfile::tempdir()?;
 
     // Create runtime archive
