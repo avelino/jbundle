@@ -38,7 +38,7 @@ pub enum Command {
         jvm_args: Vec<String>,
 
         /// Shrink the uberjar by removing non-essential files and recompressing
-        #[arg(long)]
+        #[arg(long, default_value_t = false, num_args = 0..=1, default_missing_value = "true")]
         shrink: bool,
 
         /// JVM startup profile (cli: fast startup, server: throughput optimized)

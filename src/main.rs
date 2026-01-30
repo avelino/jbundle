@@ -415,13 +415,17 @@ async fn run_build(config: BuildConfig) -> Result<()> {
 
     // Check for existing jlink runtime to reuse
     let existing_runtime = config.jlink_runtime.as_ref().and_then(|p| {
-        if p.exists() {
-            tracing::info!("using provided jlink runtime: {}", p.display());
-            Some(p.clone())
-        } else {
+        if !p.exists() {
             tracing::warn!("provided jlink runtime not found: {}", p.display());
-            None
+            return None;
         }
+        let java_bin = p.join("bin").join("java");
+        if !java_bin.exists() {
+            tracing::warn!("provided jlink runtime missing bin/java: {}", p.display());
+            return None;
+        }
+        tracing::info!("using provided jlink runtime: {}", p.display());
+        Some(p.clone())
     });
 
     // Step: Download/ensure JDK
