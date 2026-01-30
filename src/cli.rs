@@ -38,7 +38,7 @@ pub enum Command {
         jvm_args: Vec<String>,
 
         /// Shrink the uberjar by removing non-essential files and recompressing
-        #[arg(long)]
+        #[arg(long, default_value_t = false, num_args = 0..=1, default_missing_value = "true")]
         shrink: bool,
 
         /// JVM startup profile (cli: fast startup, server: throughput optimized)
@@ -52,6 +52,22 @@ pub enum Command {
         /// Enable CRaC checkpoint for instant restore (Linux only)
         #[arg(long)]
         crac: bool,
+
+        /// Gradle subproject to build (for multi-project builds)
+        #[arg(long)]
+        gradle_project: Option<String>,
+
+        /// Build all application subprojects (Gradle multi-project)
+        #[arg(long)]
+        all: bool,
+
+        /// Manual module list (bypasses jdeps detection, comma-separated)
+        #[arg(long)]
+        modules: Option<String>,
+
+        /// Path to existing jlink runtime to reuse
+        #[arg(long)]
+        jlink_runtime: Option<PathBuf>,
 
         /// Enable verbose output (show build commands and details)
         #[arg(short, long)]
