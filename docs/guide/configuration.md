@@ -13,6 +13,7 @@ jvm_args = ["-Xmx512m", "-XX:+UseZGC"]
 profile = "cli"
 appcds = true
 crac = false
+compact_banner = false
 ```
 
 All fields are optional.
@@ -27,6 +28,7 @@ All fields are optional.
 | `profile` | string | `"server"` | JVM profile (`"cli"` or `"server"`) |
 | `appcds` | boolean | `true` | Enable AppCDS for faster startup |
 | `crac` | boolean | `false` | Enable CRaC checkpoint (Linux only) |
+| `compact_banner` | boolean | `false` | Use a compact banner in the wrapper |
 
 ## Precedence
 

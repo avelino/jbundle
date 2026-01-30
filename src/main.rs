@@ -56,6 +56,7 @@ async fn main() -> Result<()> {
             no_appcds,
             crac,
             verbose: _,
+            compact_banner,
         } => {
             let input_path =
                 std::fs::canonicalize(&input).unwrap_or_else(|_| PathBuf::from(&input));
@@ -125,6 +126,12 @@ async fn main() -> Result<()> {
                     .and_then(|c| c.crac)
                     .unwrap_or(false);
 
+            let compact_banner = compact_banner
+                || project_config
+                    .as_ref()
+                    .and_then(|c| c.compact_banner)
+                    .unwrap_or(false);
+
             let config = BuildConfig {
                 input: input_path,
                 output: PathBuf::from(&output),
@@ -136,6 +143,7 @@ async fn main() -> Result<()> {
                 profile: jvm_profile,
                 appcds,
                 crac,
+                compact_banner,
             };
 
             run_build(config).await?;
@@ -253,6 +261,8 @@ async fn run_build(config: BuildConfig) -> Result<()> {
         None
     };
 
+    let compact_banner = config.compact_banner;
+
     // Step: Pack binary
     let step = pipeline.start_step("Packing binary");
     pack::create_binary(&pack::PackOptions {
@@ -264,6 +274,7 @@ async fn run_build(config: BuildConfig) -> Result<()> {
         profile: &config.profile,
         appcds: config.appcds,
         java_version,
+        compact_banner,
     })?;
     let size = std::fs::metadata(&config.output)?.len();
     Pipeline::finish_step(

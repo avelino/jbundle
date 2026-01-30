@@ -11,6 +11,7 @@ pub struct StubParams<'a> {
     pub jvm_args: &'a [String],
     pub appcds: bool,
     pub java_version: u8,
+    pub compact_banner: bool,
 }
 
 pub fn generate(params: &StubParams) -> String {
@@ -36,6 +37,7 @@ pub fn generate(params: &StubParams) -> String {
     let app_hash = params.app_hash;
     let app_size = params.app_size;
     let crac_size = params.crac_size;
+    let compact_banner_flag = if params.compact_banner { 1 } else { 0 };
 
     // AppCDS via AutoCreateSharedArchive (JDK 19+)
     let cds_flags = if params.appcds && params.java_version >= 19 {
@@ -55,7 +57,9 @@ RT_HASH="{runtime_hash}"    RT_SIZE={runtime_size}
 APP_HASH="{app_hash}"   APP_SIZE={app_size}
 CRAC_SIZE={crac_size}       CRAC_HASH="{crac_hash_val}"
 
-cat >&2 <<'BANNER'
+JCB="{compact_banner_flag}"
+
+[ "$JCB" = "1" ] && echo "binary created with jbundle.avelino.run" >&2 || cat >&2 <<'BANNER'
    _ _                    _ _
   (_) |__  _   _ _ __   __| | | ___
   | | '_ \| | | | '_ \ / _` | |/ _ \
@@ -137,6 +141,7 @@ mod tests {
             jvm_args: &[],
             appcds: true,
             java_version: 21,
+            compact_banner: false,
         }
     }
 

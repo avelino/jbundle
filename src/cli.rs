@@ -56,6 +56,10 @@ pub enum Command {
         /// Enable verbose output (show build commands and details)
         #[arg(short, long)]
         verbose: bool,
+
+        /// Use a compact banner in the wrapper
+        #[arg(long)]
+        compact_banner: bool,
     },
 
     /// Clean the jbundle cache

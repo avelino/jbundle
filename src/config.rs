@@ -119,6 +119,7 @@ pub struct BuildConfig {
     pub profile: JvmProfile,
     pub appcds: bool,
     pub crac: bool,
+    pub compact_banner: bool,
 }
 
 impl BuildConfig {

@@ -15,6 +15,7 @@ pub struct ProjectConfig {
     pub profile: Option<String>,
     pub appcds: Option<bool>,
     pub crac: Option<bool>,
+    pub compact_banner: Option<bool>,
 }
 
 pub fn load_project_config(dir: &Path) -> Result<Option<ProjectConfig>> {
@@ -49,6 +50,7 @@ jvm_args = ["-Xmx512m", "-XX:+UseZGC"]
 profile = "cli"
 appcds = false
 crac = true
+compact_banner = false
 "#,
         )
         .unwrap();
@@ -64,6 +66,7 @@ crac = true
         assert_eq!(config.profile.as_deref(), Some("cli"));
         assert_eq!(config.appcds, Some(false));
         assert_eq!(config.crac, Some(true));
+        assert_eq!(config.compact_banner, Some(false));
     }
 
     #[test]
