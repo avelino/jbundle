@@ -27,6 +27,7 @@ jbundle build [OPTIONS] --input <PATH> --output <PATH>
 | `--jvm-args <ARGS>` | — | JVM arguments (e.g., `-Xmx512m`) |
 | `--no-appcds` | — | Disable AppCDS generation |
 | `--crac` | — | Enable CRaC checkpoint (Linux only) |
+| `--compact-banner` | — | Use a compact banner in the wrapper |
 
 ### Examples
 
