@@ -7,20 +7,23 @@ use crate::jvm::cache::jdk_bin;
 pub fn detect_modules(jdk_path: &Path, jar_path: &Path) -> Result<String, PackError> {
     let jdeps = jdk_bin(jdk_path, "jdeps");
 
-    tracing::info!("detecting required modules with jdeps");
-
     let jar_str = jar_path
         .to_str()
         .ok_or_else(|| PackError::JdepsFailed("JAR path contains invalid UTF-8".into()))?;
 
+    let args = [
+        "--print-module-deps",
+        "--ignore-missing-deps",
+        "--multi-release",
+        "base",
+        jar_str,
+    ];
+
+    let cmd_str = format!("{} {}", jdeps.display(), args.join(" "));
+    tracing::info!("running: {cmd_str}");
+
     let output = Command::new(&jdeps)
-        .args([
-            "--print-module-deps",
-            "--ignore-missing-deps",
-            "--multi-release",
-            "base",
-            jar_str,
-        ])
+        .args(args)
         .output()
         .map_err(|e| PackError::JdepsFailed(format!("failed to run jdeps: {e}")))?;
 
@@ -51,29 +54,50 @@ pub fn create_runtime(
         std::fs::remove_dir_all(&runtime_path)?;
     }
 
-    tracing::info!("creating minimal JVM runtime with jlink");
-
     let runtime_str = runtime_path
         .to_str()
         .ok_or_else(|| PackError::JlinkFailed("runtime path contains invalid UTF-8".into()))?;
 
+    let args = [
+        "--add-modules",
+        modules,
+        "--strip-debug",
+        "--no-man-pages",
+        "--no-header-files",
+        "--compress=zip-6",
+        "--output",
+        runtime_str,
+    ];
+
+    let cmd_str = format!("{} {}", jlink_bin.display(), args.join(" "));
+    tracing::info!("running: {cmd_str}");
+
     let output = Command::new(&jlink_bin)
-        .args([
-            "--add-modules",
-            modules,
-            "--strip-debug",
-            "--no-man-pages",
-            "--no-header-files",
-            "--compress=zip-6",
-            "--output",
-            runtime_str,
-        ])
+        .args(args)
         .output()
         .map_err(|e| PackError::JlinkFailed(format!("failed to run jlink: {e}")))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(PackError::JlinkFailed(stderr.to_string()));
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut msg = format!("command: {cmd_str}\n");
+        if !stderr.is_empty() {
+            msg.push_str(&format!("stderr:\n{stderr}"));
+        }
+        if !stdout.is_empty() {
+            msg.push_str(&format!("stdout:\n{stdout}"));
+        }
+        if stderr.is_empty() && stdout.is_empty() {
+            msg.push_str(&format!(
+                "process exited with {}",
+                output
+                    .status
+                    .code()
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "signal".to_string())
+            ));
+        }
+        return Err(PackError::JlinkFailed(msg));
     }
 
     Ok(runtime_path)
