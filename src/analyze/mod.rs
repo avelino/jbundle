@@ -12,7 +12,8 @@ use classify::{classify_entry, detect_clojure_ns, extract_package, EntryCategory
 #[derive(Debug)]
 pub struct AnalysisReport {
     pub jar_path: String,
-    pub total_size: u64,
+    pub disk_size: u64,
+    pub total_uncompressed: u64,
     pub entry_count: usize,
     pub categories: Vec<CategoryStats>,
     pub top_packages: Vec<(String, u64, usize)>,
@@ -45,13 +46,14 @@ const TOP_N: usize = 20;
 pub fn analyze_jar(jar_path: &Path) -> Result<AnalysisReport, PackError> {
     let file = std::fs::File::open(jar_path)
         .map_err(|e| PackError::AnalyzeFailed(format!("cannot open JAR: {e}")))?;
-    let total_size = file
+    let disk_size = file
         .metadata()
         .map_err(|e| PackError::AnalyzeFailed(format!("cannot stat JAR: {e}")))?
         .len();
     let mut archive = ZipArchive::new(file)
         .map_err(|e| PackError::AnalyzeFailed(format!("cannot read JAR: {e}")))?;
 
+    let mut total_uncompressed: u64 = 0;
     let mut cat_counters: HashMap<&str, (u64, usize)> = HashMap::new();
     let mut packages: HashMap<String, (u64, usize)> = HashMap::new();
     let mut clj_ns_map: HashMap<String, (u64, usize)> = HashMap::new();
@@ -73,6 +75,7 @@ pub fn analyze_jar(jar_path: &Path) -> Result<AnalysisReport, PackError> {
         }
 
         let size = entry.size();
+        total_uncompressed += size;
         let category = classify_entry(&name);
 
         let cat_key = match category {
@@ -150,7 +153,8 @@ pub fn analyze_jar(jar_path: &Path) -> Result<AnalysisReport, PackError> {
 
     Ok(AnalysisReport {
         jar_path: jar_path.display().to_string(),
-        total_size,
+        disk_size,
+        total_uncompressed,
         entry_count,
         categories,
         top_packages,
@@ -168,7 +172,7 @@ pub fn render_report(report: &AnalysisReport) {
     eprintln!(
         "JAR: {} ({})",
         report.jar_path,
-        HumanBytes(report.total_size)
+        HumanBytes(report.disk_size)
     );
     eprintln!("Entries: {}", format_number(report.entry_count));
     eprintln!();
@@ -180,8 +184,8 @@ pub fn render_report(report: &AnalysisReport) {
         );
         eprintln!("{}", "\u{2500}".repeat(48));
         for cat in &report.categories {
-            let pct = if report.total_size > 0 {
-                (cat.size as f64 / report.total_size as f64) * 100.0
+            let pct = if report.total_uncompressed > 0 {
+                (cat.size as f64 / report.total_uncompressed as f64) * 100.0
             } else {
                 0.0
             };
@@ -224,8 +228,8 @@ pub fn render_report(report: &AnalysisReport) {
 
     let est = &report.shrink_estimate;
     if est.removable_files > 0 {
-        let pct = if report.total_size > 0 {
-            (est.removable_size as f64 / report.total_size as f64) * 100.0
+        let pct = if report.total_uncompressed > 0 {
+            (est.removable_size as f64 / report.total_uncompressed as f64) * 100.0
         } else {
             0.0
         };
@@ -421,6 +425,18 @@ mod tests {
         assert_eq!(format_number(1_000), "1,000");
         assert_eq!(format_number(12_345), "12,345");
         assert_eq!(format_number(1_234_567), "1,234,567");
+    }
+
+    #[test]
+    fn percentages_use_uncompressed_total() {
+        let jar = create_test_jar(&[
+            ("com/example/Main.class", b"fake class bytes here"),
+            ("config.edn", b"{:port 8080}"),
+        ]);
+        let report = analyze_jar(jar.path()).unwrap();
+        let sum: u64 = report.categories.iter().map(|c| c.size).sum();
+        assert_eq!(sum, report.total_uncompressed);
+        assert!(report.total_uncompressed > 0);
     }
 
     #[test]
