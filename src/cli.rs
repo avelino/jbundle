@@ -74,6 +74,13 @@ pub enum Command {
         verbose: bool,
     },
 
+    /// Analyze a JAR or project and report size breakdown
+    Analyze {
+        /// Path to project directory or pre-built JAR file
+        #[arg(short, long, default_value = ".")]
+        input: PathBuf,
+    },
+
     /// Clean the jbundle cache
     Clean,
 

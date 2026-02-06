@@ -81,7 +81,7 @@ pub fn shrink_jar(jar_path: &Path) -> Result<ShrinkResult, PackError> {
     })
 }
 
-fn should_skip(name: &str) -> bool {
+pub fn should_skip(name: &str) -> bool {
     // Maven build metadata
     if name.starts_with("META-INF/maven/") {
         return true;

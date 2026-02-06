@@ -43,6 +43,9 @@ pub enum PackError {
     #[error("shrink failed: {0}")]
     ShrinkFailed(String),
 
+    #[error("analyze failed: {0}")]
+    AnalyzeFailed(String),
+
     #[error("CRaC is not supported by this JDK")]
     CracNotSupported,
 

@@ -16,6 +16,7 @@
 * [Gradle Multi-Project](guide/gradle-multi-project.md)
 * [GitHub Actions](guide/github-actions.md)
 * [Error Diagnostics](guide/diagnostics.md)
+* [JAR Analysis](guide/analyze.md)
 
 ## Examples
 

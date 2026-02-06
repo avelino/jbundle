@@ -1,3 +1,4 @@
+mod analyze;
 mod build;
 mod cli;
 mod config;
@@ -188,6 +189,11 @@ async fn main() -> Result<()> {
             } else {
                 run_build(config).await?;
             }
+        }
+        Command::Analyze { input } => {
+            let input_path =
+                std::fs::canonicalize(&input).unwrap_or_else(|_| PathBuf::from(&input));
+            analyze::run_analyze(&input_path)?;
         }
         Command::Clean => {
             run_clean()?;

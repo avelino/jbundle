@@ -77,6 +77,45 @@ jbundle build --input . --output ./app --modules java.base,java.sql,java.logging
 jbundle build --input . --output ./app --jlink-runtime ./build/jlink
 ```
 
+## jbundle analyze
+
+Analyze a JAR or project and report size breakdown, top dependencies, and potential issues.
+
+```bash
+jbundle analyze [OPTIONS]
+```
+
+### Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--input <PATH>` | `.` | Project directory or pre-built JAR file |
+
+When given a project directory, jbundle detects the build system, builds the uberjar, then analyzes it. When given a JAR file directly, it skips the build step.
+
+### Output
+
+The report includes:
+
+* **Category breakdown** — Classes, Resources, Native libs, Metadata, Clojure/Java sources with size and file count
+* **Top packages by size** — Grouped by first 3 path segments (e.g., `org.apache.commons`)
+* **Clojure namespaces** — Detected from `__init.class` entries
+* **Shrink estimate** — How much `--shrink` would save
+* **Potential issues** — Duplicate classes, large resources (> 1 MB)
+
+### Examples
+
+```bash
+# Analyze current project
+jbundle analyze
+
+# Analyze a specific project
+jbundle analyze --input ./my-app
+
+# Analyze a pre-built JAR
+jbundle analyze --input ./target/app-standalone.jar
+```
+
 ## jbundle info
 
 Display cache information.
