@@ -44,7 +44,20 @@ Runs `mvn package -DskipTests` internally. Requires a configured shade/assembly 
 jbundle build --input ./my-gradle-app --output ./dist/app
 ```
 
-Runs `gradle build -x test` internally. Requires a configured shadowJar/fatJar task.
+Runs `gradle build -x test` internally. Requires a configured [ShadowJar](https://github.com/GradleUp/shadow)/fatJar task to create an uberjar.
+
+```kotlin
+plugins {
+    id("com.gradleup.shadow") version "8.3.0"
+}
+
+tasks.withType<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>().configureEach {
+    mergeServiceFiles()
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+}
+```
+
+For larger projects `isZip64 = true` needs to be added.
 
 ### From Pre-built JAR
 
