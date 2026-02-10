@@ -14,6 +14,7 @@ profile = "cli"
 shrink = true
 appcds = true
 crac = false
+compact_banner = false
 
 # Gradle multi-project options
 gradle_project = "app"
@@ -34,6 +35,7 @@ All fields are optional.
 | `shrink` | boolean | `false` | Shrink uberjar by removing non-essential files |
 | `appcds` | boolean | `true` | Enable AppCDS for faster startup |
 | `crac` | boolean | `false` | Enable CRaC checkpoint (Linux only) |
+| `compact_banner` | boolean | `false` | Use a compact banner in the wrapper |
 | `gradle_project` | string | — | Gradle subproject to build (for multi-project) |
 | `modules` | array | — | Manual module list (bypasses jdeps detection) |
 | `jlink_runtime` | string | — | Path to existing jlink runtime to reuse |
