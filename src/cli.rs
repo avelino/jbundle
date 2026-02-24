@@ -37,6 +37,10 @@ pub enum Command {
         #[arg(long)]
         jvm_args: Vec<String>,
 
+        /// Extra arguments passed to the build tool (e.g. Gradle -P flags)
+        #[arg(long)]
+        build_args: Vec<String>,
+
         /// Shrink the uberjar by removing non-essential files and recompressing
         #[arg(long, default_value_t = false, num_args = 0..=1, default_missing_value = "true")]
         shrink: bool,
