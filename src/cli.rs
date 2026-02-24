@@ -80,6 +80,10 @@ pub enum Command {
         /// Use a compact banner in the wrapper
         #[arg(long)]
         compact_banner: bool,
+
+        /// Show the banner only on the first run
+        #[arg(long)]
+        one_time_banner: bool,
     },
 
     /// Analyze a JAR or project and report size breakdown

@@ -17,6 +17,7 @@ pub struct ProjectConfig {
     pub appcds: Option<bool>,
     pub crac: Option<bool>,
     pub compact_banner: Option<bool>,
+    pub one_time_banner: Option<bool>,
     /// Gradle subproject to build (for multi-project builds)
     pub gradle_project: Option<String>,
     /// Manual module override (bypasses jdeps detection)
@@ -59,6 +60,7 @@ profile = "cli"
 appcds = false
 crac = true
 compact_banner = false
+one_time_banner = false
 gradle_project = "jabkit"
 modules = ["java.base", "java.sql"]
 jlink_runtime = "./build/jlink"
@@ -85,6 +87,7 @@ jlink_runtime = "./build/jlink"
         assert_eq!(config.appcds, Some(false));
         assert_eq!(config.crac, Some(true));
         assert_eq!(config.compact_banner, Some(false));
+        assert_eq!(config.one_time_banner, Some(false));
         assert_eq!(config.gradle_project.as_deref(), Some("jabkit"));
         assert_eq!(
             config.modules,

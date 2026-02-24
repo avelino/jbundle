@@ -12,6 +12,7 @@ pub struct StubParams<'a> {
     pub appcds: bool,
     pub java_version: u8,
     pub compact_banner: bool,
+    pub one_time_banner: bool,
 }
 
 pub fn generate(params: &StubParams) -> String {
@@ -50,6 +51,18 @@ pub fn generate(params: &StubParams) -> String {
 BANNER"#
     };
 
+    let banner_display = if params.one_time_banner {
+        format!(
+            r#"mkdir -p "$JBUNDLE_RUNS"
+if [ ! -e "$JBUNDLE_RUNS/$APP_HASH" ]; then
+    touch "$JBUNDLE_RUNS/$APP_HASH"
+    {jbundle_banner}
+fi"#
+        )
+    } else {
+        jbundle_banner.to_string()
+    };
+
     // AppCDS via AutoCreateSharedArchive (JDK 19+)
     let cds_flags = if params.appcds && params.java_version >= 19 {
         r#"
@@ -64,11 +77,12 @@ CDS_FLAG="-XX:+AutoCreateSharedArchive -XX:SharedArchiveFile=$CDS_FILE""#
         r#"#!/bin/sh
 set -e
 CACHE="${{HOME}}/.jbundle/cache"
+JBUNDLE_RUNS="${{HOME}}/.jbundle/runs"
 RT_HASH="{runtime_hash}"    RT_SIZE={runtime_size}
 APP_HASH="{app_hash}"   APP_SIZE={app_size}
 CRAC_SIZE={crac_size}       CRAC_HASH="{crac_hash_val}"
 
-{jbundle_banner}
+{banner_display}
 
 STUB_SIZE=__STUB_SIZE__
 
@@ -144,6 +158,7 @@ mod tests {
             appcds: true,
             java_version: 21,
             compact_banner: false,
+            one_time_banner: false,
         }
     }
 

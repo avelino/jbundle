@@ -20,6 +20,7 @@ pub struct PackOptions<'a> {
     pub appcds: bool,
     pub java_version: u8,
     pub compact_banner: bool,
+    pub one_time_banner: bool,
 }
 
 pub fn create_binary(opts: &PackOptions) -> Result<(), PackError> {
@@ -66,6 +67,7 @@ pub fn create_binary(opts: &PackOptions) -> Result<(), PackError> {
         appcds: opts.appcds,
         java_version: opts.java_version,
         compact_banner: opts.compact_banner,
+        one_time_banner: opts.one_time_banner,
     });
     let stub_script = stub::finalize_stub(&stub_script);
 

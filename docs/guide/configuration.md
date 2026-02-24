@@ -16,6 +16,7 @@ shrink = true
 appcds = true
 crac = false
 compact_banner = false
+one_time_banner = false
 
 # Gradle multi-project options
 gradle_project = "app"
@@ -41,6 +42,7 @@ All fields are optional.
 | `gradle_project` | string | — | Gradle subproject to build (for multi-project) |
 | `modules` | array | — | Manual module list (bypasses jdeps detection) |
 | `jlink_runtime` | string | — | Path to existing jlink runtime to reuse |
+| `one_time_banner` | boolean | `false` | Show the banner only on the first run |
 
 ## Precedence
 
