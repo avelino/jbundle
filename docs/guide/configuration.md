@@ -10,6 +10,7 @@ Avoid repeating flags by creating a `jbundle.toml` in your project root.
 java_version = 21
 target = "linux-x64"
 jvm_args = ["-Xmx512m", "-XX:+UseZGC"]
+build_args = ["-PeaJdkBuild=false"]
 profile = "cli"
 shrink = true
 appcds = true
@@ -31,6 +32,7 @@ All fields are optional.
 | `java_version` | integer | `21` | JDK version to bundle |
 | `target` | string | current platform | Target platform (`linux-x64`, `macos-aarch64`, etc.) |
 | `jvm_args` | array | `[]` | JVM arguments passed at runtime |
+| `build_args` | array | `[]` | Extra arguments passed to the build tool |
 | `profile` | string | `"server"` | JVM profile (`"cli"` or `"server"`) |
 | `shrink` | boolean | `false` | Shrink uberjar by removing non-essential files |
 | `appcds` | boolean | `true` | Enable AppCDS for faster startup |
@@ -115,6 +117,18 @@ When jdeps detection is insufficient:
 # jbundle.toml
 modules = ["java.base", "java.sql", "java.desktop", "jdk.incubator.vector"]
 ```
+
+### Custom Build Arguments
+
+Pass extra flags to the build tool (e.g., Gradle project properties):
+
+```toml
+# jbundle.toml
+gradle_project = "app"
+build_args = ["-PeaJdkBuild=false", "-PprojVersion=1.2.3"]
+```
+
+Works with any build system. Arguments are appended to the build command.
 
 ### Reusing Existing Runtime
 
