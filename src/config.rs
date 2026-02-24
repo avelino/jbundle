@@ -176,6 +176,8 @@ pub struct BuildConfig {
     pub compact_banner: bool,
     /// Gradle subproject to build (for multi-project builds)
     pub gradle_project: Option<String>,
+    /// Extra arguments passed to the build tool
+    pub build_args: Vec<String>,
     /// Build all application subprojects (Gradle multi-project)
     pub build_all: bool,
     /// Manual module override (bypasses jdeps detection)

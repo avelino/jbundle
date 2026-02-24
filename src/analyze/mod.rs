@@ -260,7 +260,7 @@ pub fn run_analyze(input: &Path) -> Result<(), PackError> {
             crate::detect::DetectedBuild::Simple(system) => {
                 eprintln!("Detected build system: {:?}", system);
                 eprintln!("Building uberjar...");
-                crate::build::build_uberjar(input, system)?
+                crate::build::build_uberjar(input, system, &[])?
             }
             crate::detect::DetectedBuild::GradleMultiProject {
                 app_subprojects, ..
@@ -273,7 +273,7 @@ pub fn run_analyze(input: &Path) -> Result<(), PackError> {
                 let sub = &app_subprojects[0];
                 eprintln!("Detected Gradle multi-project, using: {}", sub.name);
                 eprintln!("Building uberjar...");
-                crate::build::build_gradle_subproject(input, &sub.name)?
+                crate::build::build_gradle_subproject(input, &sub.name, &[])?
             }
         }
     } else {

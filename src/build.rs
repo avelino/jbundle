@@ -13,18 +13,26 @@ fn ensure_command_exists(cmd: &str) -> Result<(), PackError> {
     Ok(())
 }
 
-pub fn build_uberjar(project_dir: &Path, system: BuildSystem) -> Result<PathBuf, PackError> {
+pub fn build_uberjar(
+    project_dir: &Path,
+    system: BuildSystem,
+    extra_args: &[String],
+) -> Result<PathBuf, PackError> {
     match system {
-        BuildSystem::DepsEdn => build_deps_edn(project_dir),
-        BuildSystem::Leiningen => build_leiningen(project_dir),
-        BuildSystem::Maven => build_maven(project_dir),
-        BuildSystem::Gradle => build_gradle(project_dir, None),
+        BuildSystem::DepsEdn => build_deps_edn(project_dir, extra_args),
+        BuildSystem::Leiningen => build_leiningen(project_dir, extra_args),
+        BuildSystem::Maven => build_maven(project_dir, extra_args),
+        BuildSystem::Gradle => build_gradle(project_dir, None, extra_args),
     }
 }
 
 /// Build uberjar for a specific Gradle subproject.
-pub fn build_gradle_subproject(project_dir: &Path, subproject: &str) -> Result<PathBuf, PackError> {
-    build_gradle(project_dir, Some(subproject))
+pub fn build_gradle_subproject(
+    project_dir: &Path,
+    subproject: &str,
+    extra_args: &[String],
+) -> Result<PathBuf, PackError> {
+    build_gradle(project_dir, Some(subproject), extra_args)
 }
 
 /// Returns the build command description for a Gradle subproject.
@@ -41,9 +49,12 @@ pub fn build_command_description(system: BuildSystem) -> &'static str {
     }
 }
 
-fn build_deps_edn(project_dir: &Path) -> Result<PathBuf, PackError> {
+fn build_deps_edn(project_dir: &Path, extra_args: &[String]) -> Result<PathBuf, PackError> {
     let strategy = detect_deps_strategy(project_dir);
-    let args = strategy.to_args();
+    let mut args = strategy.to_args();
+    if !extra_args.is_empty() {
+        args.extend(extra_args.iter().cloned());
+    }
     run_clojure_command(project_dir, &args)
 }
 
@@ -472,12 +483,20 @@ fn walk_clj_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), 
     Ok(())
 }
 
-fn build_leiningen(project_dir: &Path) -> Result<PathBuf, PackError> {
+fn build_leiningen(project_dir: &Path, extra_args: &[String]) -> Result<PathBuf, PackError> {
     ensure_command_exists("lein")?;
-    tracing::info!("running: lein uberjar");
+    if extra_args.is_empty() {
+        tracing::info!("running: lein uberjar");
+    } else {
+        tracing::info!("running: lein uberjar {}", extra_args.join(" "));
+    }
 
-    let output = Command::new("lein")
-        .arg("uberjar")
+    let mut cmd = Command::new("lein");
+    cmd.arg("uberjar");
+    if !extra_args.is_empty() {
+        cmd.args(extra_args);
+    }
+    let output = cmd
         .current_dir(project_dir)
         .output()
         .map_err(|e| PackError::BuildFailed(format!("failed to run lein: {e}")))?;
@@ -499,12 +518,20 @@ fn build_leiningen(project_dir: &Path) -> Result<PathBuf, PackError> {
     find_uberjar(project_dir)
 }
 
-fn build_maven(project_dir: &Path) -> Result<PathBuf, PackError> {
+fn build_maven(project_dir: &Path, extra_args: &[String]) -> Result<PathBuf, PackError> {
     ensure_command_exists("mvn")?;
-    tracing::info!("running: mvn package -DskipTests");
+    if extra_args.is_empty() {
+        tracing::info!("running: mvn package -DskipTests");
+    } else {
+        tracing::info!("running: mvn package -DskipTests {}", extra_args.join(" "));
+    }
 
-    let output = Command::new("mvn")
-        .args(["package", "-DskipTests"])
+    let mut cmd = Command::new("mvn");
+    cmd.args(["package", "-DskipTests"]);
+    if !extra_args.is_empty() {
+        cmd.args(extra_args);
+    }
+    let output = cmd
         .current_dir(project_dir)
         .output()
         .map_err(|e| PackError::BuildFailed(format!("failed to run mvn: {e}")))?;
@@ -526,7 +553,11 @@ fn build_maven(project_dir: &Path) -> Result<PathBuf, PackError> {
     find_uberjar(project_dir)
 }
 
-fn build_gradle(project_dir: &Path, subproject: Option<&str>) -> Result<PathBuf, PackError> {
+fn build_gradle(
+    project_dir: &Path,
+    subproject: Option<&str>,
+    extra_args: &[String],
+) -> Result<PathBuf, PackError> {
     let (cmd, cmd_name) = if project_dir.join("gradlew").exists() {
         ("./gradlew".to_string(), "gradlew")
     } else {
@@ -547,9 +578,20 @@ fn build_gradle(project_dir: &Path, subproject: Option<&str>) -> Result<PathBuf,
             let build_task = format!(":{sub}:build");
 
             // Try shadowJar first
-            tracing::info!("running: {cmd_name} {shadow_task} -x test");
-            let output = Command::new(&cmd)
-                .args([&shadow_task, "-x", "test"])
+            if extra_args.is_empty() {
+                tracing::info!("running: {cmd_name} {shadow_task} -x test");
+            } else {
+                tracing::info!(
+                    "running: {cmd_name} {shadow_task} -x test {}",
+                    extra_args.join(" ")
+                );
+            }
+            let mut shadow_cmd = Command::new(&cmd);
+            shadow_cmd.args([&shadow_task, "-x", "test"]);
+            if !extra_args.is_empty() {
+                shadow_cmd.args(extra_args);
+            }
+            let output = shadow_cmd
                 .current_dir(project_dir)
                 .output()
                 .map_err(|e| PackError::BuildFailed(format!("failed to run {cmd_name}: {e}")))?;
@@ -580,10 +622,21 @@ fn build_gradle(project_dir: &Path, subproject: Option<&str>) -> Result<PathBuf,
         }
     };
 
-    tracing::info!("running: {cmd_name} {task} -x test");
+    if extra_args.is_empty() {
+        tracing::info!("running: {cmd_name} {task} -x test");
+    } else {
+        tracing::info!(
+            "running: {cmd_name} {task} -x test {}",
+            extra_args.join(" ")
+        );
+    }
 
-    let output = Command::new(&cmd)
-        .args([&task, "-x", "test"])
+    let mut cmd = Command::new(&cmd);
+    cmd.args([&task, "-x", "test"]);
+    if !extra_args.is_empty() {
+        cmd.args(extra_args);
+    }
+    let output = cmd
         .current_dir(project_dir)
         .output()
         .map_err(|e| PackError::BuildFailed(format!("failed to run {cmd_name}: {e}")))?;

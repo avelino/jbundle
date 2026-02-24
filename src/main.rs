@@ -56,6 +56,7 @@ async fn main() -> Result<()> {
             java_version,
             target,
             jvm_args,
+            build_args,
             shrink,
             profile,
             no_appcds,
@@ -106,6 +107,15 @@ async fn main() -> Result<()> {
                     .unwrap_or_default()
             } else {
                 jvm_args
+            };
+
+            let build_args = if build_args.is_empty() {
+                project_config
+                    .as_ref()
+                    .and_then(|c| c.build_args.clone())
+                    .unwrap_or_default()
+            } else {
+                build_args
             };
 
             let shrink = shrink
@@ -187,6 +197,7 @@ async fn main() -> Result<()> {
                 crac,
                 compact_banner,
                 gradle_project,
+                build_args,
                 build_all: all,
                 modules_override,
                 jlink_runtime,
@@ -376,7 +387,7 @@ async fn run_build(config: BuildConfig) -> Result<()> {
 
                 let build_desc = build::build_command_description(system);
                 let step = pipeline.start_step(&format!("Building uberjar ({})", build_desc));
-                let jar = build::build_uberjar(&config.input, system)?;
+                let jar = build::build_uberjar(&config.input, system, &config.build_args)?;
                 Pipeline::finish_step(
                     &step,
                     &format!("{}", jar.file_name().unwrap_or_default().to_string_lossy()),
@@ -398,7 +409,11 @@ async fn run_build(config: BuildConfig) -> Result<()> {
 
                 let build_desc = build::gradle_subproject_command_description(&selected.name);
                 let step = pipeline.start_step(&format!("Building uberjar ({})", build_desc));
-                let jar = build::build_gradle_subproject(&project.root, &selected.name)?;
+                let jar = build::build_gradle_subproject(
+                    &project.root,
+                    &selected.name,
+                    &config.build_args,
+                )?;
                 Pipeline::finish_step(
                     &step,
                     &format!("{}", jar.file_name().unwrap_or_default().to_string_lossy()),
