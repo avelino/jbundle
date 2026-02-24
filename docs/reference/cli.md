@@ -25,6 +25,7 @@ jbundle build [OPTIONS] --input <PATH> --output <PATH>
 | `--target <TARGET>` | current | Target platform (see [Platforms](platforms.md)) |
 | `--profile <PROFILE>` | `server` | JVM profile (`cli` or `server`) |
 | `--jvm-args <ARGS>` | — | JVM arguments (e.g., `-Xmx512m`) |
+| `--build-args <ARGS>` | — | Extra arguments passed to the build tool (e.g., Gradle `-P` flags) |
 | `--shrink [true\|false]` | `false` | Shrink uberjar by removing non-essential files |
 | `--no-appcds` | — | Disable AppCDS generation |
 | `--crac` | — | Enable CRaC checkpoint (Linux only) |
@@ -76,6 +77,9 @@ jbundle build --input . --output ./app --modules java.base,java.sql,java.logging
 
 # Reuse existing jlink runtime
 jbundle build --input . --output ./app --jlink-runtime ./build/jlink
+
+# Pass extra arguments to Gradle
+jbundle build --input . --output ./app --build-args "-PeaJdkBuild=false" --build-args "-PprojVersion=xyz"
 ```
 
 ## jbundle analyze
