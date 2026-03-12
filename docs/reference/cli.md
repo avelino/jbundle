@@ -33,6 +33,7 @@ jbundle build [OPTIONS] --input <PATH> --output <PATH>
 | `--gradle-project <NAME>` | — | Gradle subproject to build (multi-project) |
 | `--all` | — | Build all application subprojects (Gradle) |
 | `--modules <LIST>` | — | Manual module list, comma-separated |
+| `--java-home <PATH>` | — | Path to existing JDK installation (skips JDK download). Falls back to `JAVA_HOME` env var. |
 | `--jlink-runtime <PATH>` | — | Path to existing jlink runtime to reuse (must contain `bin/java`) |
 | `-v, --verbose` | — | Enable verbose output |
 
@@ -74,6 +75,9 @@ jbundle build --input . --output ./dist --all
 
 # Manual module specification
 jbundle build --input . --output ./app --modules java.base,java.sql,java.logging
+
+# Use existing JDK (skip download)
+jbundle build --input . --output ./app --java-home /usr/lib/jvm/java-21
 
 # Reuse existing jlink runtime
 jbundle build --input . --output ./app --jlink-runtime ./build/jlink
@@ -174,6 +178,7 @@ jbundle build --help
 
 | Variable | Description |
 |----------|-------------|
+| `JAVA_HOME` | Path to existing JDK installation (used when `--java-home` is not specified) |
 | `RUST_LOG` | Logging level (`error`, `warn`, `info`, `debug`, `trace`) |
 
 ### Logging Examples

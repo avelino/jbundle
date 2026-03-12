@@ -558,7 +558,14 @@ fn build_gradle(
     subproject: Option<&str>,
     extra_args: &[String],
 ) -> Result<PathBuf, PackError> {
-    let (cmd, cmd_name) = if project_dir.join("gradlew").exists() {
+    let (cmd, cmd_name) = if cfg!(target_os = "windows") {
+        if project_dir.join("gradlew.bat").exists() {
+            ("gradlew.bat".to_string(), "gradlew.bat")
+        } else {
+            ensure_command_exists("gradle")?;
+            ("gradle".to_string(), "gradle")
+        }
+    } else if project_dir.join("gradlew").exists() {
         ("./gradlew".to_string(), "gradlew")
     } else {
         ensure_command_exists("gradle")?;

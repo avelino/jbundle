@@ -20,6 +20,7 @@ compact_banner = false
 # Gradle multi-project options
 gradle_project = "app"
 modules = ["java.base", "java.sql"]
+java_home = "/usr/lib/jvm/java-21"
 jlink_runtime = "./build/jlink"
 ```
 
@@ -40,6 +41,7 @@ All fields are optional.
 | `compact_banner` | boolean | `false` | Use a compact banner in the wrapper |
 | `gradle_project` | string | — | Gradle subproject to build (for multi-project) |
 | `modules` | array | — | Manual module list (bypasses jdeps detection) |
+| `java_home` | string | — | Path to existing JDK installation (skips download). Falls back to `JAVA_HOME` env var. |
 | `jlink_runtime` | string | — | Path to existing jlink runtime to reuse |
 
 ## Precedence
@@ -139,7 +141,23 @@ Skip jlink if you have a pre-built runtime:
 jlink_runtime = "./build/jlink"
 ```
 
+### Reusing Local JDK
+
+Skip JDK download by reusing an existing installation:
+
+```toml
+# jbundle.toml
+java_home = "/usr/lib/jvm/java-21"
+```
+
+If `java_home` is not set in the config or CLI, jbundle automatically checks the `JAVA_HOME` environment variable.
+
 ## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `JAVA_HOME` | Path to existing JDK installation (used when `--java-home` and `java_home` config are not set) |
+| `RUST_LOG` | Logging level (`error`, `warn`, `info`, `debug`, `trace`) |
 
 For debugging, set `RUST_LOG` to control jbundle's logging:
 

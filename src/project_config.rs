@@ -21,6 +21,8 @@ pub struct ProjectConfig {
     pub gradle_project: Option<String>,
     /// Manual module override (bypasses jdeps detection)
     pub modules: Option<Vec<String>>,
+    /// Path to existing JDK installation (skips JDK download)
+    pub java_home: Option<String>,
     /// Path to existing jlink runtime to reuse
     pub jlink_runtime: Option<String>,
 }
@@ -61,6 +63,7 @@ crac = true
 compact_banner = false
 gradle_project = "jabkit"
 modules = ["java.base", "java.sql"]
+java_home = "/usr/lib/jvm/java-21"
 jlink_runtime = "./build/jlink"
 "#,
         )
@@ -90,6 +93,7 @@ jlink_runtime = "./build/jlink"
             config.modules,
             Some(vec!["java.base".to_string(), "java.sql".to_string()])
         );
+        assert_eq!(config.java_home.as_deref(), Some("/usr/lib/jvm/java-21"));
         assert_eq!(config.jlink_runtime.as_deref(), Some("./build/jlink"));
     }
 
@@ -148,6 +152,22 @@ build_args = ["-PeaJdkBuild=false"]
 
         let result = load_project_config(dir.path());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_config_with_java_home() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join(CONFIG_FILE),
+            r#"
+java_home = "/usr/lib/jvm/java-21"
+"#,
+        )
+        .unwrap();
+
+        let config = load_project_config(dir.path()).unwrap().unwrap();
+        assert_eq!(config.java_home.as_deref(), Some("/usr/lib/jvm/java-21"));
+        assert_eq!(config.jlink_runtime, None);
     }
 
     #[test]

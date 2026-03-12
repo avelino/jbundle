@@ -64,6 +64,7 @@ async fn main() -> Result<()> {
             gradle_project,
             all,
             modules,
+            java_home,
             jlink_runtime,
             verbose: _,
             compact_banner,
@@ -163,6 +164,16 @@ async fn main() -> Result<()> {
                 .map(|m| m.split(',').map(|s| s.trim().to_string()).collect())
                 .or_else(|| project_config.as_ref().and_then(|c| c.modules.clone()));
 
+            // Java home path (CLI > config file > JAVA_HOME env var)
+            let java_home = java_home
+                .or_else(|| {
+                    project_config
+                        .as_ref()
+                        .and_then(|c| c.java_home.as_ref())
+                        .map(PathBuf::from)
+                })
+                .or_else(|| std::env::var("JAVA_HOME").ok().map(PathBuf::from));
+
             // Jlink runtime path (CLI > config file)
             let jlink_runtime = jlink_runtime.or_else(|| {
                 project_config
@@ -200,6 +211,7 @@ async fn main() -> Result<()> {
                 build_args,
                 build_all: all,
                 modules_override,
+                java_home,
                 jlink_runtime,
             };
 
@@ -470,10 +482,33 @@ async fn run_build(config: BuildConfig) -> Result<()> {
         Some(p.clone())
     });
 
-    // Step: Download/ensure JDK
-    let step = pipeline.start_step(&format!("Downloading JDK {}", java_version));
-    let jdk_path = jvm::ensure_jdk(java_version, &config.target, pipeline.mp()).await?;
-    Pipeline::finish_step(&step, "ready");
+    // Step: Ensure JDK (use local java_home or download)
+    let jdk_path = if let Some(ref java_home) = config.java_home {
+        let step = pipeline.start_step("Using local JDK");
+        let jh = std::fs::canonicalize(java_home).unwrap_or_else(|_| java_home.clone());
+        if !jh.exists() {
+            return Err(PackError::InvalidJavaHome(format!(
+                "path does not exist: {}",
+                jh.display()
+            ))
+            .into());
+        }
+        let java_bin = jvm::cache::jdk_bin(&jh, "java");
+        if !java_bin.exists() {
+            return Err(PackError::InvalidJavaHome(format!(
+                "bin/java not found in {}",
+                jh.display()
+            ))
+            .into());
+        }
+        Pipeline::finish_step(&step, &format!("{}", jh.display()));
+        jh
+    } else {
+        let step = pipeline.start_step(&format!("Downloading JDK {}", java_version));
+        let jdk_path = jvm::ensure_jdk(java_version, &config.target, pipeline.mp()).await?;
+        Pipeline::finish_step(&step, "ready");
+        jdk_path
+    };
 
     let temp_dir = tempfile::tempdir()?;
 

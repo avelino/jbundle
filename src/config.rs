@@ -95,6 +95,7 @@ pub enum BuildSystem {
 pub enum TargetOs {
     Linux,
     MacOs,
+    Windows,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -113,6 +114,8 @@ impl Target {
     pub fn current() -> Self {
         let os = if cfg!(target_os = "macos") {
             TargetOs::MacOs
+        } else if cfg!(target_os = "windows") {
+            TargetOs::Windows
         } else {
             TargetOs::Linux
         };
@@ -142,6 +145,10 @@ impl Target {
                 os: TargetOs::MacOs,
                 arch: TargetArch::Aarch64,
             }),
+            "windows-x64" => Some(Self {
+                os: TargetOs::Windows,
+                arch: TargetArch::X86_64,
+            }),
             _ => None,
         }
     }
@@ -150,6 +157,7 @@ impl Target {
         match self.os {
             TargetOs::Linux => "linux",
             TargetOs::MacOs => "mac",
+            TargetOs::Windows => "windows",
         }
     }
 
@@ -182,6 +190,8 @@ pub struct BuildConfig {
     pub build_all: bool,
     /// Manual module override (bypasses jdeps detection)
     pub modules_override: Option<Vec<String>>,
+    /// Path to existing JDK installation (skips download)
+    pub java_home: Option<PathBuf>,
     /// Path to existing jlink runtime to reuse
     pub jlink_runtime: Option<PathBuf>,
 }
@@ -222,8 +232,15 @@ mod tests {
     }
 
     #[test]
+    fn target_from_str_windows() {
+        let t = Target::from_str("windows-x64").unwrap();
+        assert_eq!(t.os, TargetOs::Windows);
+        assert_eq!(t.arch, TargetArch::X86_64);
+    }
+
+    #[test]
     fn target_from_str_invalid() {
-        assert!(Target::from_str("windows-x64").is_none());
+        assert!(Target::from_str("windows-aarch64").is_none());
         assert!(Target::from_str("").is_none());
         assert!(Target::from_str("linux").is_none());
     }
@@ -241,6 +258,12 @@ mod tests {
             arch: TargetArch::X86_64,
         };
         assert_eq!(macos.adoptium_os(), "mac");
+
+        let windows = Target {
+            os: TargetOs::Windows,
+            arch: TargetArch::X86_64,
+        };
+        assert_eq!(windows.adoptium_os(), "windows");
     }
 
     #[test]

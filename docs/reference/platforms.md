@@ -57,6 +57,7 @@ When no `--target` is specified, jbundle detects the current platform:
 | macOS | x86_64 | `macos-x64` |
 | Linux | x86_64 | `linux-x64` |
 | Linux | ARM64 | `linux-aarch64` |
+| Windows | x86_64 | `windows-x64` |
 
 ## CI/CD Example
 
@@ -81,7 +82,9 @@ jobs:
 
 ## Windows Support
 
-Windows is not currently supported. Planned for a future release.
+jbundle can run on Windows as a **build host** — it compiles and tests on Windows, and can produce Linux/macOS binaries using cross-compilation. However, Windows is not yet supported as an **output target** (the binary stub is a shell script).
+
+To run jbundle on Windows, use `--java-home` to point to a local JDK installation (or set the `JAVA_HOME` environment variable).
 
 ## Notes
 
