@@ -114,11 +114,22 @@ mod tests {
         assert_eq!(name, "jdk-21-linux-x64");
     }
 
+    fn expected_tool_name(tool: &str) -> String {
+        if cfg!(target_os = "windows") {
+            format!("{tool}.exe")
+        } else {
+            tool.to_string()
+        }
+    }
+
     #[test]
-    fn jdk_bin_returns_linux_path_by_default() {
+    fn jdk_bin_returns_default_path() {
         let dir = tempdir().unwrap();
         let path = jdk_bin(dir.path(), "java");
-        assert_eq!(path, dir.path().join("bin").join("java"));
+        assert_eq!(
+            path,
+            dir.path().join("bin").join(expected_tool_name("java"))
+        );
     }
 
     #[test]
@@ -126,10 +137,11 @@ mod tests {
         let dir = tempdir().unwrap();
         let macos_bin = dir.path().join("Contents").join("Home").join("bin");
         std::fs::create_dir_all(&macos_bin).unwrap();
-        std::fs::write(macos_bin.join("java"), b"fake").unwrap();
+        let tool = expected_tool_name("java");
+        std::fs::write(macos_bin.join(&tool), b"fake").unwrap();
 
         let path = jdk_bin(dir.path(), "java");
-        assert_eq!(path, macos_bin.join("java"));
+        assert_eq!(path, macos_bin.join(&tool));
     }
 
     #[test]
