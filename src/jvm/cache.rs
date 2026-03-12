@@ -79,16 +79,22 @@ fn flatten_single_subdir(dir: &Path) -> Result<(), PackError> {
 }
 
 pub fn jdk_bin(jdk_path: &Path, tool: &str) -> PathBuf {
+    let tool_name = if cfg!(target_os = "windows") {
+        format!("{tool}.exe")
+    } else {
+        tool.to_string()
+    };
+
     // macOS JDK has Contents/Home structure
     let macos_bin = jdk_path
         .join("Contents")
         .join("Home")
         .join("bin")
-        .join(tool);
+        .join(&tool_name);
     if macos_bin.exists() {
         return macos_bin;
     }
-    jdk_path.join("bin").join(tool)
+    jdk_path.join("bin").join(&tool_name)
 }
 
 #[cfg(test)]

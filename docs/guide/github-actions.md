@@ -218,6 +218,28 @@ Speed up builds by caching the jbundle cache directory:
 
 This caches downloaded JDKs and extracted runtimes.
 
+## Reusing the CI JDK
+
+By default jbundle downloads a JDK from Adoptium. Since `setup-java` already provides one, you can skip the download by leveraging `JAVA_HOME` (set automatically by `setup-java`):
+
+```yaml
+- name: Set up JDK
+  uses: actions/setup-java@v4
+  with:
+    distribution: temurin
+    java-version: 21
+
+- name: Build binary
+  run: jbundle build --input . --output ./dist/myapp
+```
+
+jbundle automatically detects the `JAVA_HOME` environment variable and reuses the installed JDK, skipping the Adoptium download entirely. You can also be explicit with `--java-home`:
+
+```yaml
+- name: Build binary
+  run: jbundle build --input . --output ./dist/myapp --java-home $JAVA_HOME
+```
+
 ## Using jbundle.toml
 
 Instead of passing flags, use a config file:

@@ -75,4 +75,7 @@ pub enum PackError {
 
     #[error("multiple application subprojects found, please specify one with --gradle-project")]
     MultipleApplicationSubprojects(Vec<String>),
+
+    #[error("invalid java-home: {0}")]
+    InvalidJavaHome(String),
 }

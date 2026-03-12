@@ -14,6 +14,7 @@ pub struct Cli {
 }
 
 #[derive(Subcommand)]
+#[allow(clippy::large_enum_variant)]
 pub enum Command {
     /// Build a self-contained binary from a JVM project or JAR
     Build {
@@ -68,6 +69,10 @@ pub enum Command {
         /// Manual module list (bypasses jdeps detection, comma-separated)
         #[arg(long)]
         modules: Option<String>,
+
+        /// Path to existing JDK installation (skips JDK download)
+        #[arg(long)]
+        java_home: Option<PathBuf>,
 
         /// Path to existing jlink runtime to reuse
         #[arg(long)]
