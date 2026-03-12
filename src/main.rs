@@ -473,7 +473,7 @@ async fn run_build(config: BuildConfig) -> Result<()> {
             tracing::warn!("provided jlink runtime not found: {}", p.display());
             return None;
         }
-        let java_bin = p.join("bin").join("java");
+        let java_bin = jvm::cache::jdk_bin(p, "java");
         if !java_bin.exists() {
             tracing::warn!("provided jlink runtime missing bin/java: {}", p.display());
             return None;
