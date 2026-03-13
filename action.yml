@@ -1,0 +1,127 @@
+name: "jbundle"
+description: "Package JVM applications into self-contained binaries"
+branding:
+  icon: "package"
+  color: "blue"
+
+inputs:
+  version:
+    description: "jbundle version to install (e.g., v0.1.0). Defaults to latest release."
+    required: false
+    default: "latest"
+  input:
+    description: "Path to project directory or JAR file"
+    required: false
+  output:
+    description: "Output binary path"
+    required: false
+  java-version:
+    description: "JDK version to bundle (11, 17, 21, etc.)"
+    required: false
+  target:
+    description: "Target platform (linux-x64, linux-aarch64, macos-x64, macos-aarch64)"
+    required: false
+  profile:
+    description: "JVM profile (cli or server)"
+    required: false
+  shrink:
+    description: "Shrink uberjar by removing non-essential files"
+    required: false
+  args:
+    description: "Additional arguments passed to jbundle build"
+    required: false
+  install-only:
+    description: "Only install jbundle, don't run build"
+    required: false
+    default: "false"
+
+outputs:
+  binary:
+    description: "Path to the output binary"
+    value: ${{ steps.build.outputs.binary }}
+  version:
+    description: "Installed jbundle version"
+    value: ${{ steps.install.outputs.version }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Detect platform
+      id: platform
+      shell: bash
+      run: |
+        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        ARCH=$(uname -m)
+        case "$OS" in
+          linux)  PLATFORM="linux" ;;
+          darwin) PLATFORM="darwin" ;;
+          *)      echo "::error::Unsupported OS: $OS"; exit 1 ;;
+        esac
+        case "$ARCH" in
+          x86_64|amd64)  ARCH="x86_64" ;;
+          aarch64|arm64) ARCH="aarch64" ;;
+          *)             echo "::error::Unsupported arch: $ARCH"; exit 1 ;;
+        esac
+        echo "artifact=jbundle-${PLATFORM}-${ARCH}" >> $GITHUB_OUTPUT
+
+    - name: Install jbundle
+      id: install
+      shell: bash
+      run: |
+        VERSION="${{ inputs.version }}"
+        ARTIFACT="${{ steps.platform.outputs.artifact }}"
+
+        if [ "$VERSION" = "latest" ]; then
+          DOWNLOAD_URL="https://github.com/avelino/jbundle/releases/latest/download/${ARTIFACT}.tar.gz"
+        else
+          DOWNLOAD_URL="https://github.com/avelino/jbundle/releases/download/${VERSION}/${ARTIFACT}-${VERSION}.tar.gz"
+        fi
+
+        echo "Downloading jbundle from ${DOWNLOAD_URL}"
+        TMP_DIR=$(mktemp -d)
+        curl -sSL "$DOWNLOAD_URL" -o "${TMP_DIR}/jbundle.tar.gz"
+        tar xzf "${TMP_DIR}/jbundle.tar.gz" -C "$TMP_DIR"
+
+        INSTALL_DIR="${RUNNER_TOOL_CACHE}/jbundle"
+        mkdir -p "$INSTALL_DIR"
+        mv "${TMP_DIR}/jbundle" "$INSTALL_DIR/jbundle"
+        chmod +x "$INSTALL_DIR/jbundle"
+        echo "$INSTALL_DIR" >> $GITHUB_PATH
+
+        rm -rf "$TMP_DIR"
+
+        INSTALLED_VERSION=$("$INSTALL_DIR/jbundle" --version 2>&1 || echo "unknown")
+        echo "version=${INSTALLED_VERSION}" >> $GITHUB_OUTPUT
+        echo "Installed: ${INSTALLED_VERSION}"
+
+    - name: Build binary
+      id: build
+      if: inputs.install-only != 'true' && inputs.input != ''
+      shell: bash
+      run: |
+        CMD="jbundle build"
+        CMD="$CMD --input ${{ inputs.input }}"
+
+        if [ -n "${{ inputs.output }}" ]; then
+          CMD="$CMD --output ${{ inputs.output }}"
+        fi
+        if [ -n "${{ inputs.java-version }}" ]; then
+          CMD="$CMD --java-version ${{ inputs.java-version }}"
+        fi
+        if [ -n "${{ inputs.target }}" ]; then
+          CMD="$CMD --target ${{ inputs.target }}"
+        fi
+        if [ -n "${{ inputs.profile }}" ]; then
+          CMD="$CMD --profile ${{ inputs.profile }}"
+        fi
+        if [ "${{ inputs.shrink }}" = "true" ]; then
+          CMD="$CMD --shrink"
+        fi
+        if [ -n "${{ inputs.args }}" ]; then
+          CMD="$CMD ${{ inputs.args }}"
+        fi
+
+        echo "Running: $CMD"
+        eval $CMD
+
+        echo "binary=${{ inputs.output }}" >> $GITHUB_OUTPUT
