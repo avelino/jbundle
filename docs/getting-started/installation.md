@@ -10,6 +10,8 @@ curl -sSL https://raw.githubusercontent.com/avelino/jbundle/main/install.sh | sh
 
 ### Windows (PowerShell)
 
+> **Help wanted:** Windows support is best-effort. Contributions welcome — see [open issues](https://github.com/avelino/jbundle/issues).
+
 ```powershell
 irm https://raw.githubusercontent.com/avelino/jbundle/main/install.ps1 | iex
 ```
