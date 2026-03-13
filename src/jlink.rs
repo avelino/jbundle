@@ -4,6 +4,15 @@ use std::process::Command;
 use crate::error::PackError;
 use crate::jvm::cache::jdk_bin;
 
+/// Resolve the jmods directory for a JDK, handling macOS Contents/Home structure.
+fn jdk_jmods(jdk_path: &Path) -> PathBuf {
+    let macos_jmods = jdk_path.join("Contents").join("Home").join("jmods");
+    if macos_jmods.exists() {
+        return macos_jmods;
+    }
+    jdk_path.join("jmods")
+}
+
 pub fn detect_modules(jdk_path: &Path, jar_path: &Path) -> Result<String, PackError> {
     let jdeps = jdk_bin(jdk_path, "jdeps");
 
@@ -85,7 +94,7 @@ pub fn create_runtime(
     let module_path_str;
     let mut args = vec![];
     if let Some(target_jdk) = target_jdk_path {
-        let jmods = target_jdk.join("jmods");
+        let jmods = jdk_jmods(target_jdk);
         if !jmods.exists() {
             return Err(PackError::JlinkFailed(format!(
                 "target JDK jmods directory not found: {}",
