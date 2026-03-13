@@ -113,8 +113,8 @@ jobs:
               echo "::endgroup::"
               continue
             fi
-            if [[ "$RUNNER_OS" == "Windows" && "$name" == clojure-* ]]; then
-              echo "::group::Skipping $name (Clojure CLI not available in Git Bash on Windows)"
+            if [[ "$RUNNER_OS" == "Windows" && "$name" != java-gradle ]]; then
+              echo "::group::Skipping $name (only Gradle available on Windows runner)"
               echo "::endgroup::"
               continue
             fi
