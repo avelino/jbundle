@@ -64,18 +64,9 @@ jobs:
       - run: cargo build --release
 
   examples:
-    name: Examples (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Examples
+    runs-on: ubuntu-latest
     needs: [build]
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: ""
-            jbundle: ./target/release/jbundle
-          - os: windows-latest
-            target: linux-x64
-            jbundle: ./target/release/jbundle.exe
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -100,12 +91,7 @@ jobs:
         run: cargo build --release
 
       - name: Build all examples
-        shell: bash
         run: |
-          TARGET_FLAG=""
-          if [ -n "${{ matrix.target }}" ]; then
-            TARGET_FLAG="--target ${{ matrix.target }}"
-          fi
           for example_dir in example/*/; do
             name=$(basename "$example_dir")
             if [[ "$name" == *"-with-error"* ]]; then
@@ -113,18 +99,12 @@ jobs:
               echo "::endgroup::"
               continue
             fi
-            if [[ "$RUNNER_OS" == "Windows" && "$name" != java-gradle ]]; then
-              echo "::group::Skipping $name (only Gradle available on Windows runner)"
-              echo "::endgroup::"
-              continue
-            fi
             echo "::group::Building $name"
-            ${{ matrix.jbundle }} build --input "$example_dir" --output "./dist/$name" $TARGET_FLAG
+            ./target/release/jbundle build --input "$example_dir" --output "./dist/$name"
             echo "::endgroup::"
           done
 
       - name: Run all examples
-        if: matrix.target == ''
         run: |
           for binary in dist/*; do
             name=$(basename "$binary")

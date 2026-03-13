@@ -90,6 +90,8 @@ jobs:
 
 ## Windows Support
 
+> **Help wanted:** Windows support is maintained on a best-effort basis. If you use jbundle on Windows and want to help keep it working, we'd love your contributions — see [open issues](https://github.com/avelino/jbundle/issues).
+
 jbundle runs on Windows as a **build host** — pre-compiled binaries are available for Windows x86_64. You can use jbundle on Windows to build Linux and macOS binaries via cross-compilation.
 
 **What works on Windows:**
