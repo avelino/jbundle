@@ -14,6 +14,9 @@ GraalVM native-image has slow compilations, complex reflection configuration, an
 # Install (macOS/Linux)
 curl -sSL https://raw.githubusercontent.com/avelino/jbundle/main/install.sh | sh
 
+# Install (Windows PowerShell)
+# irm https://raw.githubusercontent.com/avelino/jbundle/main/install.ps1 | iex
+
 # Or via Homebrew
 brew tap avelino/jbundle
 brew install jbundle

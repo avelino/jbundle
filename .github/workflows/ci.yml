@@ -64,9 +64,18 @@ jobs:
       - run: cargo build --release
 
   examples:
-    name: Examples
-    runs-on: ubuntu-latest
+    name: Examples (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     needs: [build]
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: ""
+            jbundle: ./target/release/jbundle
+          - os: windows-latest
+            target: linux-x64
+            jbundle: ./target/release/jbundle.exe
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -91,7 +100,12 @@ jobs:
         run: cargo build --release
 
       - name: Build all examples
+        shell: bash
         run: |
+          TARGET_FLAG=""
+          if [ -n "${{ matrix.target }}" ]; then
+            TARGET_FLAG="--target ${{ matrix.target }}"
+          fi
           for example_dir in example/*/; do
             name=$(basename "$example_dir")
             if [[ "$name" == *"-with-error"* ]]; then
@@ -100,11 +114,12 @@ jobs:
               continue
             fi
             echo "::group::Building $name"
-            ./target/release/jbundle build --input "$example_dir" --output "./dist/$name"
+            ${{ matrix.jbundle }} build --input "$example_dir" --output "./dist/$name" $TARGET_FLAG
             echo "::endgroup::"
           done
 
       - name: Run all examples
+        if: matrix.target == ''
         run: |
           for binary in dist/*; do
             name=$(basename "$binary")

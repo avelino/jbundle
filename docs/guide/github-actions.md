@@ -167,6 +167,47 @@ jobs:
           path: ./dist/myapp-${{ matrix.target }}
 ```
 
+## Windows CI
+
+jbundle works on `windows-latest` runners. Build binaries for all platforms from Windows:
+
+```yaml
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: macos-14
+            target: macos-aarch64
+          - os: windows-latest
+            target: linux-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: avelino/jbundle@main
+        with:
+          input: .
+          output: ./dist/myapp-${{ matrix.target }}
+          target: ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: myapp-${{ matrix.os }}-${{ matrix.target }}
+          path: ./dist/myapp-${{ matrix.target }}
+```
+
+> **Note:** The output binary uses a Unix shell stub, so `--target` must be a Linux or macOS platform. Windows is supported as a build host, not an output target.
+
 ## Gradle Multi-Project
 
 For projects with multiple subprojects (like JabRef):
