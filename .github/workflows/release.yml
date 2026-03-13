@@ -1,6 +1,8 @@
 name: Release
 
 on:
+  push:
+    tags: ["v*"]
   workflow_run:
     workflows: ["CI"]
     types: [completed]
@@ -12,31 +14,31 @@ jobs:
   prepare:
     name: Prepare Release
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'success'
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     outputs:
       is_tag: ${{ steps.check.outputs.is_tag }}
       is_main: ${{ steps.check.outputs.is_main }}
       version: ${{ steps.check.outputs.version }}
-      sha: ${{ github.event.workflow_run.head_sha }}
+      sha: ${{ steps.check.outputs.sha }}
     steps:
       - name: Check release type
         id: check
         run: |
-          HEAD_BRANCH="${{ github.event.workflow_run.head_branch }}"
-          echo "Head branch: $HEAD_BRANCH"
-
-          if [[ "$HEAD_BRANCH" == v* ]]; then
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            echo "Tag push: $TAG"
             echo "is_tag=true" >> $GITHUB_OUTPUT
             echo "is_main=false" >> $GITHUB_OUTPUT
-            echo "version=$HEAD_BRANCH" >> $GITHUB_OUTPUT
-          elif [[ "$HEAD_BRANCH" == "main" ]]; then
+            echo "version=$TAG" >> $GITHUB_OUTPUT
+            echo "sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+          else
+            echo "workflow_run from main"
             echo "is_tag=false" >> $GITHUB_OUTPUT
             echo "is_main=true" >> $GITHUB_OUTPUT
             echo "version=latest" >> $GITHUB_OUTPUT
-          else
-            echo "is_tag=false" >> $GITHUB_OUTPUT
-            echo "is_main=false" >> $GITHUB_OUTPUT
-            echo "version=" >> $GITHUB_OUTPUT
+            echo "sha=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
           fi
 
   build:
@@ -215,6 +217,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
