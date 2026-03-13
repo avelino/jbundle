@@ -77,11 +77,6 @@ pub fn create_runtime(
         compress_flag,
     ];
 
-    // JDK 19+: remove unnecessary native commands (keytool, etc.), keep only java
-    if java_version >= 19 {
-        args.push("--strip-native-commands");
-    }
-
     args.push("--output");
     args.push(runtime_str);
 
