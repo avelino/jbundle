@@ -548,7 +548,7 @@ async fn run_build(config: BuildConfig) -> Result<()> {
         existing
     } else {
         let step = pipeline.start_step("Creating minimal runtime (jlink)");
-        let runtime = jlink::create_runtime(&jdk_path, &modules, temp_dir.path())?;
+        let runtime = jlink::create_runtime(&jdk_path, &modules, temp_dir.path(), java_version)?;
         Pipeline::finish_step(&step, "done");
         runtime
     };

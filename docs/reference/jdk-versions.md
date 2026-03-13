@@ -65,6 +65,7 @@ Use **Java 21** (current LTS):
 |----------------|-----------------|
 | Virtual threads | 21 |
 | Pattern matching for switch | 21 |
+| Stripped native commands (smaller runtime) | 19 |
 | Records | 16 |
 | Text blocks | 15 |
 | `var` keyword | 10 |
@@ -77,6 +78,10 @@ AppCDS (automatic shared archive) requires JDK 19+. On older JDKs:
 * JDK 19+: Automatic AppCDS via `-XX:+AutoCreateSharedArchive`
 
 For best startup performance, use JDK 21 or newer.
+
+## Runtime Size by Version
+
+JDK 19+ produces smaller runtimes because jbundle uses `--strip-native-commands` to remove unnecessary tools (keytool, jrunscript, etc.), keeping only the `java` binary. On older JDKs, these tools are included in the runtime.
 
 ## JDK Download & Cache
 
