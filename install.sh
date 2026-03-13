@@ -71,7 +71,11 @@ main() {
         TARBALL="${ARTIFACT}-${VERSION}.tar.gz"
     fi
 
-    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
+    if [ "$VERSION" = "latest" ]; then
+        DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${TARBALL}"
+    else
+        DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
+    fi
 
     echo "Downloading jbundle ${VERSION} for $(uname -s)/$(uname -m)..."
     echo "  ${DOWNLOAD_URL}"
