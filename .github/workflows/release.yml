@@ -63,6 +63,10 @@ jobs:
             os: macos-latest
             artifact: jbundle-darwin-aarch64
             cross: false
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            artifact: jbundle-windows-x86_64
+            cross: false
 
     steps:
       - uses: actions/checkout@v4
@@ -89,7 +93,8 @@ jobs:
             cargo build --release --target ${{ matrix.target }}
           fi
 
-      - name: Package artifact
+      - name: Package artifact (unix)
+        if: runner.os != 'Windows'
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/jbundle dist/jbundle
@@ -98,11 +103,28 @@ jobs:
           tar czf ${{ matrix.artifact }}.tar.gz jbundle
           rm jbundle
 
-      - name: Upload artifact
+      - name: Package artifact (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item "target/${{ matrix.target }}/release/jbundle.exe" "dist/jbundle.exe"
+          Compress-Archive -Path "dist/jbundle.exe" -DestinationPath "dist/${{ matrix.artifact }}.zip"
+          Remove-Item "dist/jbundle.exe"
+
+      - name: Upload artifact (unix)
+        if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.artifact }}.tar.gz
+
+      - name: Upload artifact (windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.zip
 
   release-latest:
     name: Update Pre-release (latest)
@@ -162,6 +184,12 @@ jobs:
           curl -sSL https://raw.githubusercontent.com/avelino/jbundle/main/install.sh | sh
           \`\`\`
 
+          ## Install (Windows)
+
+          \`\`\`powershell
+          irm https://raw.githubusercontent.com/avelino/jbundle/main/install.ps1 | iex
+          \`\`\`
+
           ## Downloads
           | Platform | Binary |
           |----------|--------|
@@ -169,6 +197,7 @@ jobs:
           | Linux ARM64 | \`jbundle-linux-aarch64.tar.gz\` |
           | macOS x86_64 | \`jbundle-darwin-x86_64.tar.gz\` |
           | macOS ARM64 | \`jbundle-darwin-aarch64.tar.gz\` |
+          | Windows x86_64 | \`jbundle-windows-x86_64.zip\` |
           " \
             release/*
         env:
@@ -197,11 +226,15 @@ jobs:
           mkdir -p release
           VERSION="${{ needs.prepare.outputs.version }}"
           for dir in artifacts/*/; do
-            name=$(basename "$dir")
-            # Rename: jbundle-linux-x86_64.tar.gz -> jbundle-linux-x86_64-v0.1.0.tar.gz
             for file in "$dir"*; do
-              base=$(basename "$file" .tar.gz)
-              cp "$file" "release/${base}-${VERSION}.tar.gz"
+              filename=$(basename "$file")
+              if [[ "$filename" == *.zip ]]; then
+                base=$(basename "$filename" .zip)
+                cp "$file" "release/${base}-${VERSION}.zip"
+              else
+                base=$(basename "$filename" .tar.gz)
+                cp "$file" "release/${base}-${VERSION}.tar.gz"
+              fi
             done
           done
           ls -la release/

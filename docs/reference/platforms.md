@@ -90,12 +90,32 @@ jobs:
 
 ## Windows Support
 
-jbundle can run on Windows as a **build host** — it compiles and tests on Windows, and can produce Linux/macOS binaries using cross-compilation. However, Windows is not yet supported as an **output target** (the binary stub is a shell script).
+jbundle runs on Windows as a **build host** — pre-compiled binaries are available for Windows x86_64. You can use jbundle on Windows to build Linux and macOS binaries via cross-compilation.
 
-To run jbundle on Windows, use `--java-home` to point to a local JDK installation (or set the `JAVA_HOME` environment variable).
+**What works on Windows:**
+
+* Installing and running jbundle (`jbundle.exe`)
+* Building uberjars from JVM projects
+* Cross-compiling to Linux/macOS targets
+* Using `--java-home` or `JAVA_HOME` to reuse a local JDK
+
+**Limitation:** The output binary uses a Unix shell stub (`/bin/sh`), so Windows is not supported as an **output target**. The binaries jbundle produces run on Linux and macOS.
+
+### Install on Windows
+
+```powershell
+irm https://raw.githubusercontent.com/avelino/jbundle/main/install.ps1 | iex
+```
+
+### Example: Build Linux binary from Windows
+
+```powershell
+jbundle build --input . --output ./dist/myapp --target linux-x64
+```
 
 ## Notes
 
 * **CRaC** is Linux-only (checkpoint/restore requires Linux kernel features)
 * **Binary format** differs between platforms (ELF on Linux, Mach-O on macOS)
 * **Shell stub** uses `/bin/sh` which is available on all Unix-like systems
+* **Windows** is supported as a build host but not as an output target

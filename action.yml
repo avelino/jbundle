@@ -41,15 +41,18 @@ outputs:
     value: ${{ steps.build.outputs.binary }}
   version:
     description: "Installed jbundle version"
-    value: ${{ steps.install.outputs.version }}
+    value: ${{ steps.install-unix.outputs.version || steps.install-windows.outputs.version }}
 
 runs:
   using: "composite"
   steps:
-    - name: Detect platform
-      id: platform
+    - name: Install jbundle (unix)
+      id: install-unix
+      if: runner.os != 'Windows'
       shell: bash
       run: |
+        VERSION="${{ inputs.version }}"
+
         OS=$(uname -s | tr '[:upper:]' '[:lower:]')
         ARCH=$(uname -m)
         case "$OS" in
@@ -62,14 +65,7 @@ runs:
           aarch64|arm64) ARCH="aarch64" ;;
           *)             echo "::error::Unsupported arch: $ARCH"; exit 1 ;;
         esac
-        echo "artifact=jbundle-${PLATFORM}-${ARCH}" >> $GITHUB_OUTPUT
-
-    - name: Install jbundle
-      id: install
-      shell: bash
-      run: |
-        VERSION="${{ inputs.version }}"
-        ARTIFACT="${{ steps.platform.outputs.artifact }}"
+        ARTIFACT="jbundle-${PLATFORM}-${ARCH}"
 
         if [ "$VERSION" = "latest" ]; then
           DOWNLOAD_URL="https://github.com/avelino/jbundle/releases/latest/download/${ARTIFACT}.tar.gz"
@@ -93,6 +89,38 @@ runs:
         INSTALLED_VERSION=$("$INSTALL_DIR/jbundle" --version 2>&1 || echo "unknown")
         echo "version=${INSTALLED_VERSION}" >> $GITHUB_OUTPUT
         echo "Installed: ${INSTALLED_VERSION}"
+
+    - name: Install jbundle (windows)
+      id: install-windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $Version = "${{ inputs.version }}"
+        $Artifact = "jbundle-windows-x86_64"
+
+        if ($Version -eq "latest") {
+          $Url = "https://github.com/avelino/jbundle/releases/latest/download/$Artifact.zip"
+        } else {
+          $Url = "https://github.com/avelino/jbundle/releases/download/$Version/$Artifact-$Version.zip"
+        }
+
+        Write-Host "Downloading jbundle from $Url"
+        $TmpDir = Join-Path $env:RUNNER_TEMP "jbundle-install"
+        New-Item -ItemType Directory -Force -Path $TmpDir | Out-Null
+        $ZipPath = Join-Path $TmpDir "jbundle.zip"
+        Invoke-WebRequest -Uri $Url -OutFile $ZipPath -UseBasicParsing
+        Expand-Archive -Path $ZipPath -DestinationPath $TmpDir -Force
+
+        $InstallDir = Join-Path $env:RUNNER_TOOL_CACHE "jbundle"
+        New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+        Copy-Item (Join-Path $TmpDir "jbundle.exe") (Join-Path $InstallDir "jbundle.exe") -Force
+        echo "$InstallDir" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+        Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
+
+        $InstalledVersion = & "$InstallDir\jbundle.exe" --version 2>&1
+        echo "version=$InstalledVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        Write-Host "Installed: $InstalledVersion"
 
     - name: Build binary
       id: build
