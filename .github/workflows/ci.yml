@@ -113,6 +113,11 @@ jobs:
               echo "::endgroup::"
               continue
             fi
+            if [[ "$RUNNER_OS" == "Windows" && "$name" == clojure-* ]]; then
+              echo "::group::Skipping $name (Clojure CLI not available in Git Bash on Windows)"
+              echo "::endgroup::"
+              continue
+            fi
             echo "::group::Building $name"
             ${{ matrix.jbundle }} build --input "$example_dir" --output "./dist/$name" $TARGET_FLAG
             echo "::endgroup::"
