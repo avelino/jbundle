@@ -107,6 +107,31 @@ mvn package -DskipTests
 gradle build -x test
 ```
 
+### jdeps and jlink Errors
+
+When `jdeps` fails to analyze module dependencies, jbundle shows the error and falls back to a common module set:
+
+```
+  ⚠ jdeps failed, falling back to common modules
+    command: /path/to/jdeps --print-module-deps --ignore-missing-deps ...
+    Error: Missing or corrupt class files
+```
+
+When `jlink` fails to create the runtime, jbundle shows the full command, exit code, and stderr:
+
+```
+Error: jlink failed: exit code 1
+  command: /path/to/jlink --add-modules java.base --strip-debug ...
+  stderr:
+    Error: Module java.desktop not found
+```
+
+Use `--dry-run` to verify your configuration before running a full build:
+
+```bash
+jbundle build --input . --output ./app --dry-run
+```
+
 ### Common Issues
 
 | Error | Likely Cause |
@@ -115,3 +140,5 @@ gradle build -x test
 | "JAR not found" | Build succeeded but no uberjar was created |
 | "Main class not found" | MANIFEST.MF missing Main-Class entry |
 | "Module not found" | jdeps detected a module that jlink can't resolve |
+| "cannot execute binary file" | Cross-compiling but using target JDK tools — update jbundle |
+| "target JDK jmods directory not found" | Target JDK missing `jmods/` directory |

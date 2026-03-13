@@ -111,6 +111,12 @@ pub struct Target {
 }
 
 impl Target {
+    /// Returns true if this target differs from the current host platform.
+    pub fn is_cross_compile(&self) -> bool {
+        let host = Self::current();
+        self.os != host.os || self.arch != host.arch
+    }
+
     pub fn current() -> Self {
         let os = if cfg!(target_os = "macos") {
             TargetOs::MacOs
@@ -194,6 +200,8 @@ pub struct BuildConfig {
     pub java_home: Option<PathBuf>,
     /// Path to existing jlink runtime to reuse
     pub jlink_runtime: Option<PathBuf>,
+    /// Show build plan without executing
+    pub dry_run: bool,
 }
 
 impl BuildConfig {
@@ -356,5 +364,39 @@ mod tests {
     fn jvm_profile_gc_flag() {
         assert_eq!(JvmProfile::Cli.gc_flag(), Some("-XX:+UseSerialGC"));
         assert_eq!(JvmProfile::Server.gc_flag(), None);
+    }
+
+    #[test]
+    fn is_cross_compile_same_platform() {
+        let current = Target::current();
+        assert!(!current.is_cross_compile());
+    }
+
+    #[test]
+    fn is_cross_compile_different_os() {
+        let current = Target::current();
+        let cross = Target {
+            os: if current.os == TargetOs::Linux {
+                TargetOs::MacOs
+            } else {
+                TargetOs::Linux
+            },
+            arch: current.arch,
+        };
+        assert!(cross.is_cross_compile());
+    }
+
+    #[test]
+    fn is_cross_compile_different_arch() {
+        let current = Target::current();
+        let cross = Target {
+            os: current.os,
+            arch: if current.arch == TargetArch::X86_64 {
+                TargetArch::Aarch64
+            } else {
+                TargetArch::X86_64
+            },
+        };
+        assert!(cross.is_cross_compile());
     }
 }

@@ -11,16 +11,21 @@ GraalVM native-image has slow compilations, complex reflection configuration, an
 ## Quick Start
 
 ```bash
-# Install
-git clone https://github.com/avelino/jbundle.git
-cd jbundle
-cargo install --path .
+# Install (macOS/Linux)
+curl -sSL https://raw.githubusercontent.com/avelino/jbundle/main/install.sh | sh
+
+# Or via Homebrew
+brew tap avelino/jbundle
+brew install jbundle
 
 # Build your app
 jbundle build --input ./my-app --output ./dist/my-app
 
 # Run (no Java required)
 ./dist/my-app
+
+# Preview build plan without executing
+jbundle build --input ./my-app --output ./dist/my-app --dry-run
 ```
 
 ## Documentation
