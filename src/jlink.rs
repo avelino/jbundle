@@ -46,6 +46,7 @@ pub fn create_runtime(
     jdk_path: &Path,
     modules: &str,
     output_dir: &Path,
+    java_version: u8,
 ) -> Result<PathBuf, PackError> {
     let jlink_bin = jdk_bin(jdk_path, "jlink");
     let runtime_path = output_dir.join("runtime");
@@ -58,22 +59,37 @@ pub fn create_runtime(
         .to_str()
         .ok_or_else(|| PackError::JlinkFailed("runtime path contains invalid UTF-8".into()))?;
 
-    let args = [
+    // Use no compression in jlink — the outer tar.gz handles compression
+    // more efficiently (avoids double-compression overhead).
+    // JDK 21+ uses zip-N format; older JDKs use numeric format.
+    let compress_flag = if java_version >= 21 {
+        "--compress=zip-0"
+    } else {
+        "--compress=0"
+    };
+
+    let mut args = vec![
         "--add-modules",
         modules,
         "--strip-debug",
         "--no-man-pages",
         "--no-header-files",
-        "--compress=zip-6",
-        "--output",
-        runtime_str,
+        compress_flag,
     ];
+
+    // JDK 19+: remove unnecessary native commands (keytool, etc.), keep only java
+    if java_version >= 19 {
+        args.push("--strip-native-commands");
+    }
+
+    args.push("--output");
+    args.push(runtime_str);
 
     let cmd_str = format!("{} {}", jlink_bin.display(), args.join(" "));
     tracing::info!("running: {cmd_str}");
 
     let output = Command::new(&jlink_bin)
-        .args(args)
+        .args(&args)
         .output()
         .map_err(|e| PackError::JlinkFailed(format!("failed to run jlink: {e}")))?;
 

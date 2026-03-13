@@ -9,7 +9,7 @@ use crate::error::PackError;
 pub fn create_runtime_archive(runtime_dir: &Path, work_dir: &Path) -> Result<PathBuf, PackError> {
     let archive_path = work_dir.join("runtime.tar.gz");
     let file = std::fs::File::create(&archive_path)?;
-    let encoder = GzEncoder::new(file, Compression::default());
+    let encoder = GzEncoder::new(file, Compression::best());
     let mut tar = tar::Builder::new(encoder);
 
     tracing::info!("creating runtime archive");

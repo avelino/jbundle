@@ -59,7 +59,7 @@ jbundle attacks this from multiple angles:
 
 ### 1. Minimal Runtime (jlink)
 
-Instead of the full JDK (~300MB), jbundle uses `jdeps` to detect which modules your app uses, then `jlink` to create a minimal runtime (~30-50MB). Less code to load = faster startup.
+Instead of the full JDK (~300MB), jbundle uses `jdeps` to detect which modules your app uses, then `jlink` to create a minimal runtime (~30-50MB). The runtime is created without internal compression and then compressed once at maximum level in the final binary — avoiding double-compression overhead. On JDK 19+, unnecessary tools (keytool, jrunscript) are stripped, keeping only the `java` binary. Less code to load = faster startup.
 
 ### 2. AppCDS (Class Data Sharing)
 

@@ -117,9 +117,18 @@ jbundle clean
 
 Removes all cached data.
 
+## Binary Size Optimization
+
+jbundle uses single-pass compression to minimize binary size:
+
+* **jlink runtime** — Created with no internal compression (`--compress=zip-0`), then compressed once via `tar.gz` at maximum level. This avoids double-compression overhead (compressing already-compressed data).
+* **Application JAR** — Compressed with gzip at maximum level.
+* **JDK 19+** — `--strip-native-commands` removes unnecessary tools (keytool, jrunscript), keeping only the `java` binary.
+
 ## Performance Tips
 
 1. **Use `--profile cli`** for command-line tools
 2. **Keep AppCDS enabled** (default) for best startup
 3. **Consider CRaC** for Linux deployments where startup is critical
 4. **Pre-warm in CI** by running the binary once to generate AppCDS
+5. **Use JDK 19+** for smaller runtimes (stripped native commands)
