@@ -43,9 +43,17 @@ jbundle supports cross-compilation. You can build Linux binaries from macOS:
 ```bash
 # On macOS, build for Linux
 jbundle build --input . --output ./app-linux --target linux-x64
+
+# Preview what cross-compilation will do
+jbundle build --input . --output ./app-linux --target linux-x64 --dry-run
 ```
 
-The JDK is downloaded for the target platform, not the host.
+When cross-compiling, jbundle downloads **two** JDKs:
+
+1. **Host JDK** — Used to run `jdeps` (module detection) and `jlink` (runtime creation)
+2. **Target JDK** — Provides the `jmods` directory for the target platform
+
+This ensures that `jdeps` and `jlink` can execute on your machine while producing a runtime for the target platform.
 
 ## Platform Detection
 

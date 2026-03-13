@@ -85,6 +85,10 @@ pub enum Command {
         /// Use a compact banner in the wrapper
         #[arg(long)]
         compact_banner: bool,
+
+        /// Show what would be done without executing anything
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Analyze a JAR or project and report size breakdown

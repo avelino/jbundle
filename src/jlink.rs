@@ -29,8 +29,15 @@ pub fn detect_modules(jdk_path: &Path, jar_path: &Path) -> Result<String, PackEr
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        // jdeps can fail on some JARs, fall back to java.base
-        tracing::warn!("jdeps failed, falling back to common modules: {stderr}");
+        // jdeps can fail on some JARs, fall back to common modules
+        eprintln!("  ⚠ jdeps failed, falling back to common modules");
+        eprintln!("    command: {cmd_str}");
+        if !stderr.trim().is_empty() {
+            for line in stderr.trim().lines() {
+                eprintln!("    {line}");
+            }
+        }
+        tracing::info!("jdeps fallback triggered: {stderr}");
         return Ok("java.base,java.logging,java.sql,java.naming,java.management,java.instrument,java.desktop,java.xml,java.net.http".to_string());
     }
 
@@ -42,11 +49,17 @@ pub fn detect_modules(jdk_path: &Path, jar_path: &Path) -> Result<String, PackEr
     Ok(modules)
 }
 
+/// Create a minimal JVM runtime using jlink.
+///
+/// When cross-compiling, `target_jdk_path` provides the path to the target
+/// platform's JDK so jlink can use its jmods. The jlink binary itself is
+/// always taken from `jdk_path` (the host JDK).
 pub fn create_runtime(
     jdk_path: &Path,
     modules: &str,
     output_dir: &Path,
     java_version: u8,
+    target_jdk_path: Option<&Path>,
 ) -> Result<PathBuf, PackError> {
     let jlink_bin = jdk_bin(jdk_path, "jlink");
     let runtime_path = output_dir.join("runtime");
@@ -68,17 +81,32 @@ pub fn create_runtime(
         "--compress=0"
     };
 
-    let mut args = vec![
+    // When cross-compiling, point jlink to target JDK's jmods
+    let module_path_str;
+    let mut args = vec![];
+    if let Some(target_jdk) = target_jdk_path {
+        let jmods = target_jdk.join("jmods");
+        if !jmods.exists() {
+            return Err(PackError::JlinkFailed(format!(
+                "target JDK jmods directory not found: {}",
+                jmods.display()
+            )));
+        }
+        module_path_str = jmods.to_string_lossy().to_string();
+        args.push("--module-path");
+        args.push(&module_path_str);
+    }
+
+    args.extend_from_slice(&[
         "--add-modules",
         modules,
         "--strip-debug",
         "--no-man-pages",
         "--no-header-files",
         compress_flag,
-    ];
-
-    args.push("--output");
-    args.push(runtime_str);
+        "--output",
+        runtime_str,
+    ]);
 
     let cmd_str = format!("{} {}", jlink_bin.display(), args.join(" "));
     tracing::info!("running: {cmd_str}");
@@ -91,22 +119,25 @@ pub fn create_runtime(
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let mut msg = format!("command: {cmd_str}\n");
-        if !stderr.is_empty() {
-            msg.push_str(&format!("stderr:\n{stderr}"));
+        let exit_code = output
+            .status
+            .code()
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "signal".to_string());
+
+        let mut msg = format!("exit code {exit_code}\n");
+        msg.push_str(&format!("  command: {cmd_str}\n"));
+        if !stderr.trim().is_empty() {
+            msg.push_str("  stderr:\n");
+            for line in stderr.trim().lines() {
+                msg.push_str(&format!("    {line}\n"));
+            }
         }
-        if !stdout.is_empty() {
-            msg.push_str(&format!("stdout:\n{stdout}"));
-        }
-        if stderr.is_empty() && stdout.is_empty() {
-            msg.push_str(&format!(
-                "process exited with {}",
-                output
-                    .status
-                    .code()
-                    .map(|c| c.to_string())
-                    .unwrap_or_else(|| "signal".to_string())
-            ));
+        if !stdout.trim().is_empty() {
+            msg.push_str("  stdout:\n");
+            for line in stdout.trim().lines() {
+                msg.push_str(&format!("    {line}\n"));
+            }
         }
         return Err(PackError::JlinkFailed(msg));
     }

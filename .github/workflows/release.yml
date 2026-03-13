@@ -50,12 +50,19 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             artifact: jbundle-linux-x86_64
+            cross: false
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: jbundle-linux-aarch64
+            cross: true
           - target: x86_64-apple-darwin
             os: macos-latest
             artifact: jbundle-darwin-x86_64
+            cross: false
           - target: aarch64-apple-darwin
             os: macos-latest
             artifact: jbundle-darwin-aarch64
+            cross: false
 
     steps:
       - uses: actions/checkout@v4
@@ -70,20 +77,32 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
 
-      - name: Prepare artifact
+      - name: Build release binary
+        run: |
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+
+      - name: Package artifact
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/jbundle dist/${{ matrix.artifact }}
-          chmod +x dist/${{ matrix.artifact }}
+          cp target/${{ matrix.target }}/release/jbundle dist/jbundle
+          chmod +x dist/jbundle
+          cd dist
+          tar czf ${{ matrix.artifact }}.tar.gz jbundle
+          rm jbundle
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.tar.gz
 
   release-latest:
     name: Update Pre-release (latest)
@@ -137,12 +156,19 @@ jobs:
 
           > ⚠️ This is a development build and may be unstable. For production use, please use a tagged release.
 
+          ## Install
+
+          \`\`\`bash
+          curl -sSL https://raw.githubusercontent.com/avelino/jbundle/main/install.sh | sh
+          \`\`\`
+
           ## Downloads
           | Platform | Binary |
           |----------|--------|
-          | Linux x86_64 | \`jbundle-linux-x86_64\` |
-          | macOS x86_64 | \`jbundle-darwin-x86_64\` |
-          | macOS ARM64 | \`jbundle-darwin-aarch64\` |
+          | Linux x86_64 | \`jbundle-linux-x86_64.tar.gz\` |
+          | Linux ARM64 | \`jbundle-linux-aarch64.tar.gz\` |
+          | macOS x86_64 | \`jbundle-darwin-x86_64.tar.gz\` |
+          | macOS ARM64 | \`jbundle-darwin-aarch64.tar.gz\` |
           " \
             release/*
         env:
@@ -171,8 +197,12 @@ jobs:
           mkdir -p release
           VERSION="${{ needs.prepare.outputs.version }}"
           for dir in artifacts/*/; do
-            filename=$(basename "$dir")
-            cp "$dir"* "release/${filename}-${VERSION}"
+            name=$(basename "$dir")
+            # Rename: jbundle-linux-x86_64.tar.gz -> jbundle-linux-x86_64-v0.1.0.tar.gz
+            for file in "$dir"*; do
+              base=$(basename "$file" .tar.gz)
+              cp "$file" "release/${base}-${VERSION}.tar.gz"
+            done
           done
           ls -la release/
 
@@ -188,6 +218,7 @@ jobs:
           gh release create "$VERSION" \
             --title "jbundle $VERSION" \
             --generate-notes \
+            --notes-start-tag "$(git tag --sort=-v:refname | head -2 | tail -1)" \
             release/*
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

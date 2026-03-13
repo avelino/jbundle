@@ -35,6 +35,7 @@ jbundle build [OPTIONS] --input <PATH> --output <PATH>
 | `--modules <LIST>` | — | Manual module list, comma-separated |
 | `--java-home <PATH>` | — | Path to existing JDK installation (skips JDK download). Falls back to `JAVA_HOME` env var. |
 | `--jlink-runtime <PATH>` | — | Path to existing jlink runtime to reuse (must contain `bin/java`) |
+| `--dry-run` | — | Show build plan without executing anything |
 | `-v, --verbose` | — | Enable verbose output |
 
 ### Examples
@@ -84,6 +85,12 @@ jbundle build --input . --output ./app --jlink-runtime ./build/jlink
 
 # Pass extra arguments to Gradle
 jbundle build --input . --output ./app --build-args "-PeaJdkBuild=false" --build-args "-PprojVersion=xyz"
+
+# Preview build plan without executing
+jbundle build --input . --output ./app --dry-run
+
+# Dry-run with specific target to verify cross-compilation setup
+jbundle build --input . --output ./app --target linux-x64 --dry-run
 ```
 
 ## jbundle analyze

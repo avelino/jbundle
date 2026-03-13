@@ -34,6 +34,7 @@ async fn main() -> Result<()> {
 
     // Extract verbose flag before initializing tracing
     let verbose = matches!(&cli.command, Command::Build { verbose: true, .. });
+    let dry_run = matches!(&cli.command, Command::Build { dry_run: true, .. });
 
     let default_level = if verbose {
         "jbundle=info"
@@ -68,6 +69,7 @@ async fn main() -> Result<()> {
             jlink_runtime,
             verbose: _,
             compact_banner,
+            dry_run: _,
         } => {
             let input_path =
                 std::fs::canonicalize(&input).unwrap_or_else(|_| PathBuf::from(&input));
@@ -213,6 +215,7 @@ async fn main() -> Result<()> {
                 modules_override,
                 java_home,
                 jlink_runtime,
+                dry_run,
             };
 
             if config.build_all {
@@ -369,16 +372,22 @@ async fn run_build_all(config: BuildConfig) -> Result<()> {
     Ok(())
 }
 
-fn calculate_steps(is_jar_input: bool, shrink: bool, crac: bool) -> usize {
+fn calculate_steps(is_jar_input: bool, shrink: bool, crac: bool, is_cross: bool) -> usize {
     let base = if is_jar_input { 1 } else { 2 }; // JAR or detect+build
     let shrink_step = if shrink { 1 } else { 0 };
     let crac_step = if crac { 1 } else { 0 };
-    base + shrink_step + 4 + crac_step // +4 = JDK, jdeps, jlink, pack
+    let jdk_steps = if is_cross { 2 } else { 1 }; // host + target JDK
+    base + shrink_step + jdk_steps + 3 + crac_step // +3 = jdeps, jlink, pack
 }
 
 async fn run_build(config: BuildConfig) -> Result<()> {
+    if config.dry_run {
+        return run_dry_run(&config);
+    }
+
     let is_jar_input = config.input.extension().is_some_and(|e| e == "jar");
-    let total_steps = calculate_steps(is_jar_input, config.shrink, config.crac);
+    let is_cross = config.target.is_cross_compile();
+    let total_steps = calculate_steps(is_jar_input, config.shrink, config.crac, is_cross);
     let mut pipeline = Pipeline::new(total_steps);
 
     eprintln!();
@@ -483,7 +492,10 @@ async fn run_build(config: BuildConfig) -> Result<()> {
     });
 
     // Step: Ensure JDK (use local java_home or download)
-    let jdk_path = if let Some(ref java_home) = config.java_home {
+    // For cross-compilation, we need the host JDK (to run jdeps/jlink)
+    // and the target JDK (for jmods).
+    let is_cross = config.target.is_cross_compile();
+    let (jdk_path, target_jdk_path) = if let Some(ref java_home) = config.java_home {
         let step = pipeline.start_step("Using local JDK");
         let jh = std::fs::canonicalize(java_home).unwrap_or_else(|_| java_home.clone());
         if !jh.exists() {
@@ -502,12 +514,39 @@ async fn run_build(config: BuildConfig) -> Result<()> {
             .into());
         }
         Pipeline::finish_step(&step, &format!("{}", jh.display()));
-        jh
+
+        // If cross-compiling with local JDK, still need target JDK for jmods
+        let target_jdk = if is_cross {
+            let step = pipeline.start_step(&format!(
+                "Downloading target JDK {} ({:?})",
+                java_version, config.target
+            ));
+            let target = jvm::ensure_jdk(java_version, &config.target, pipeline.mp()).await?;
+            Pipeline::finish_step(&step, "ready");
+            Some(target)
+        } else {
+            None
+        };
+        (jh, target_jdk)
+    } else if is_cross {
+        // Cross-compilation: download host JDK for tools + target JDK for jmods
+        let host_target = Target::current();
+        let step = pipeline.start_step(&format!("Downloading host JDK {}", java_version));
+        let host_jdk = jvm::ensure_jdk(java_version, &host_target, pipeline.mp()).await?;
+        Pipeline::finish_step(&step, "ready");
+
+        let step = pipeline.start_step(&format!(
+            "Downloading target JDK {} ({:?})",
+            java_version, config.target
+        ));
+        let target_jdk = jvm::ensure_jdk(java_version, &config.target, pipeline.mp()).await?;
+        Pipeline::finish_step(&step, "ready");
+        (host_jdk, Some(target_jdk))
     } else {
         let step = pipeline.start_step(&format!("Downloading JDK {}", java_version));
         let jdk_path = jvm::ensure_jdk(java_version, &config.target, pipeline.mp()).await?;
         Pipeline::finish_step(&step, "ready");
-        jdk_path
+        (jdk_path, None)
     };
 
     let temp_dir = tempfile::tempdir()?;
@@ -548,7 +587,13 @@ async fn run_build(config: BuildConfig) -> Result<()> {
         existing
     } else {
         let step = pipeline.start_step("Creating minimal runtime (jlink)");
-        let runtime = jlink::create_runtime(&jdk_path, &modules, temp_dir.path(), java_version)?;
+        let runtime = jlink::create_runtime(
+            &jdk_path,
+            &modules,
+            temp_dir.path(),
+            java_version,
+            target_jdk_path.as_deref(),
+        )?;
         Pipeline::finish_step(&step, "done");
         runtime
     };
@@ -593,6 +638,115 @@ async fn run_build(config: BuildConfig) -> Result<()> {
     );
 
     pipeline.finish(&config.output.display().to_string());
+
+    Ok(())
+}
+
+fn run_dry_run(config: &BuildConfig) -> Result<()> {
+    let is_jar_input = config.input.extension().is_some_and(|e| e == "jar");
+    let is_cross = config.target.is_cross_compile();
+
+    eprintln!();
+    eprintln!(
+        "[dry-run] Build plan for {} → {}",
+        config.input.display(),
+        config.output.display()
+    );
+    eprintln!();
+
+    // Build system
+    if is_jar_input {
+        eprintln!(
+            "  Input:         Pre-built JAR ({})",
+            config.input.display()
+        );
+    } else {
+        match detect::detect_build_system_enhanced(&config.input) {
+            Ok(detect::DetectedBuild::Simple(system)) => {
+                let desc = build::build_command_description(system);
+                eprintln!("  Build system:  {:?} ({})", system, desc);
+            }
+            Ok(detect::DetectedBuild::GradleMultiProject {
+                app_subprojects, ..
+            }) => {
+                let names: Vec<_> = app_subprojects.iter().map(|s| s.name.as_str()).collect();
+                let selected = config
+                    .gradle_project
+                    .as_deref()
+                    .unwrap_or(if names.len() == 1 {
+                        names[0]
+                    } else {
+                        "<interactive>"
+                    });
+                eprintln!("  Build system:  Gradle multi-project ({})", selected);
+                eprintln!("  Subprojects:   {}", names.join(", "));
+            }
+            Err(e) => {
+                eprintln!("  Build system:  ⚠ detection failed: {e}");
+            }
+        }
+    }
+
+    // Target
+    eprintln!("  Target:        {:?}", config.target);
+    if is_cross {
+        eprintln!("  Cross-compile: yes (host: {:?})", Target::current());
+    }
+
+    // JDK
+    eprintln!("  JDK version:   {}", config.java_version);
+    if let Some(ref jh) = config.java_home {
+        eprintln!("  JDK source:    local ({})", jh.display());
+    } else {
+        let cache_path = jvm::cache::cached_jdk_path(config.java_version, &config.target)?;
+        if cache_path.exists() {
+            eprintln!("  JDK source:    cached ✓");
+        } else {
+            eprintln!("  JDK source:    will download from Adoptium");
+        }
+    }
+
+    // Modules
+    if let Some(ref modules) = config.modules_override {
+        eprintln!(
+            "  Modules:       manual override ({} modules)",
+            modules.len()
+        );
+    } else {
+        eprintln!("  Modules:       auto-detect (jdeps)");
+    }
+
+    // Runtime
+    if let Some(ref rt) = config.jlink_runtime {
+        eprintln!("  Runtime:       reuse existing ({})", rt.display());
+    } else {
+        eprintln!("  Runtime:       create via jlink");
+    }
+
+    // Options
+    eprintln!("  Profile:       {}", config.profile.name());
+    eprintln!(
+        "  Shrink:        {}",
+        if config.shrink { "enabled" } else { "disabled" }
+    );
+    eprintln!(
+        "  AppCDS:        {}",
+        if config.appcds { "enabled" } else { "disabled" }
+    );
+    eprintln!(
+        "  CRaC:          {}",
+        if config.crac { "enabled" } else { "disabled" }
+    );
+    if !config.jvm_args.is_empty() {
+        eprintln!("  JVM args:      {}", config.jvm_args.join(" "));
+    }
+    if !config.build_args.is_empty() {
+        eprintln!("  Build args:    {}", config.build_args.join(" "));
+    }
+
+    eprintln!();
+    eprintln!("  No actions taken.");
+    eprintln!();
 
     Ok(())
 }
