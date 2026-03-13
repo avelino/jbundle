@@ -6,7 +6,7 @@ branding:
 
 inputs:
   version:
-    description: "jbundle version to install (e.g., v0.1.0). Defaults to latest release."
+    description: "jbundle version to install (e.g., v0.2.0). Defaults to latest release."
     required: false
     default: "latest"
   input:

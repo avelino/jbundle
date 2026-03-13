@@ -32,10 +32,10 @@ $env:JBUNDLE_INSTALL_DIR = "C:\tools" ; irm https://raw.githubusercontent.com/av
 
 ```bash
 # macOS / Linux
-JBUNDLE_VERSION=v0.1.0 curl -sSL https://raw.githubusercontent.com/avelino/jbundle/main/install.sh | sh
+JBUNDLE_VERSION=v0.2.0 curl -sSL https://raw.githubusercontent.com/avelino/jbundle/main/install.sh | sh
 
 # Windows
-$env:JBUNDLE_VERSION = "v0.1.0" ; irm https://raw.githubusercontent.com/avelino/jbundle/main/install.ps1 | iex
+$env:JBUNDLE_VERSION = "v0.2.0" ; irm https://raw.githubusercontent.com/avelino/jbundle/main/install.ps1 | iex
 ```
 
 ## Homebrew

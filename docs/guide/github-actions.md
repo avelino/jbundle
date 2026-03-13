@@ -41,7 +41,7 @@ That's it. Replace `myapp` with your app name.
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `version` | no | `latest` | jbundle version to install (e.g., `v0.1.0`) |
+| `version` | no | `latest` | jbundle version to install (e.g., `v0.2.0`) |
 | `input` | no | — | Path to project directory or JAR file |
 | `output` | no | — | Output binary path |
 | `java-version` | no | — | JDK version to bundle (11, 17, 21, etc.) |
@@ -122,7 +122,7 @@ That's it. Replace `myapp` with your app name.
 ### Pin to a Specific Version
 
 ```yaml
-- uses: avelino/jbundle@v0.1.0
+- uses: avelino/jbundle@v0.2.0
   with:
     input: .
     output: ./dist/myapp

@@ -1,7 +1,7 @@
 class Jbundle < Formula
   desc "Package JVM applications into self-contained binaries"
   homepage "https://github.com/avelino/jbundle"
-  version "0.1.0"
+  version "0.2.0"
   license "MIT"
 
   on_macos do
