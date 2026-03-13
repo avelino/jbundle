@@ -31,7 +31,11 @@ if ($Version -eq "latest") {
     $ZipName = "$Artifact-$Version.zip"
 }
 
-$DownloadUrl = "https://github.com/$Repo/releases/download/$Version/$ZipName"
+if ($Version -eq "latest") {
+    $DownloadUrl = "https://github.com/$Repo/releases/latest/download/$ZipName"
+} else {
+    $DownloadUrl = "https://github.com/$Repo/releases/download/$Version/$ZipName"
+}
 
 Write-Host "Downloading jbundle $Version for Windows..."
 Write-Host "  $DownloadUrl"
