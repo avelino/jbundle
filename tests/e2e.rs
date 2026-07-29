@@ -10,6 +10,11 @@
 //! stays green on machines without a JVM toolchain. In CI (with setup-java),
 //! set `JBUNDLE_E2E=1` to turn a missing/incomplete JDK into a hard failure and
 //! guarantee the harness actually ran.
+//!
+//! Unix-only: the produced binary is a self-extracting shell script, which
+//! Windows can't run natively (jbundle treats Windows as a build host, not an
+//! output target). On Windows this file compiles to zero tests.
+#![cfg(unix)]
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -24,8 +29,6 @@ struct Case {
     /// Whether to pass `--shrink` (covers the shrink -> pack path).
     shrink: bool,
 }
-
-const EXE_SUFFIX: &str = if cfg!(windows) { ".exe" } else { "" };
 
 /// Locate a JDK home that has the tools we need. Order: `$JAVA_HOME`, then the
 /// parent of a `javac` found on `PATH`. Returns `None` if nothing usable exists.
@@ -51,7 +54,7 @@ fn find_jdk() -> Option<PathBuf> {
     }
 
     // `javac` on PATH -> <home>/bin/javac -> home is two levels up.
-    let javac = which_on_path(&format!("javac{EXE_SUFFIX}"))?;
+    let javac = which_on_path("javac")?;
     let home = javac.parent()?.parent()?.to_path_buf();
     if jdk_is_complete(&home) {
         return Some(home);
@@ -64,11 +67,7 @@ fn find_jdk() -> Option<PathBuf> {
 fn jdk_is_complete(home: &Path) -> bool {
     ["javac", "jar", "jlink", "jdeps", "java"]
         .iter()
-        .all(|tool| {
-            home.join("bin")
-                .join(format!("{tool}{EXE_SUFFIX}"))
-                .is_file()
-        })
+        .all(|tool| home.join("bin").join(tool).is_file())
 }
 
 fn which_on_path(exe: &str) -> Option<PathBuf> {
@@ -79,7 +78,7 @@ fn which_on_path(exe: &str) -> Option<PathBuf> {
 }
 
 fn tool(home: &Path, name: &str) -> PathBuf {
-    home.join("bin").join(format!("{name}{EXE_SUFFIX}"))
+    home.join("bin").join(name)
 }
 
 /// Skip the whole harness when there's no JDK, unless `JBUNDLE_E2E=1` forces it.
@@ -135,7 +134,7 @@ fn run_case(case: &Case) {
 
     let work = tempfile::tempdir().expect("tempdir");
     let jar = build_fixture_jar(&jdk, work.path(), case);
-    let out_bin = work.path().join(format!("{}-app{EXE_SUFFIX}", case.class));
+    let out_bin = work.path().join(format!("{}-app", case.class));
 
     // Build the self-contained binary. `--java-home` reuses the local JDK so the
     // test never hits the network (Adoptium download) and stays hermetic.
