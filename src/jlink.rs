@@ -13,6 +13,32 @@ fn jdk_jmods(jdk_path: &Path) -> PathBuf {
     jdk_path.join("jmods")
 }
 
+/// Pick the `--compress` flag from `jlink --help` output. Newer JDKs accept the
+/// `zip-N` spelling; older ones only accept the numeric `0/1/2`. Both mean "no
+/// internal compression" here (`zip-0` / `0`). Defaults to the numeric form,
+/// which every supported JDK understands (still valid, if deprecated, on new
+/// JDKs) unless the help text shows `zip-N` is available.
+fn compress_flag_from_help(help: &str) -> &'static str {
+    if help.contains("zip-") {
+        "--compress=zip-0"
+    } else {
+        "--compress=0"
+    }
+}
+
+/// Probe the given jlink binary to decide which `--compress` spelling it takes.
+/// Falls back to the numeric form if the probe can't run.
+fn jlink_compress_flag(jlink_bin: &Path) -> &'static str {
+    match Command::new(jlink_bin).arg("--help").output() {
+        Ok(out) => {
+            let mut help = String::from_utf8_lossy(&out.stdout).into_owned();
+            help.push_str(&String::from_utf8_lossy(&out.stderr));
+            compress_flag_from_help(&help)
+        }
+        Err(_) => "--compress=0",
+    }
+}
+
 pub fn detect_modules(jdk_path: &Path, jar_path: &Path) -> Result<String, PackError> {
     let jdeps = jdk_bin(jdk_path, "jdeps");
 
@@ -67,7 +93,6 @@ pub fn create_runtime(
     jdk_path: &Path,
     modules: &str,
     output_dir: &Path,
-    java_version: u8,
     target_jdk_path: Option<&Path>,
 ) -> Result<PathBuf, PackError> {
     let jlink_bin = jdk_bin(jdk_path, "jlink");
@@ -81,14 +106,12 @@ pub fn create_runtime(
         .to_str()
         .ok_or_else(|| PackError::JlinkFailed("runtime path contains invalid UTF-8".into()))?;
 
-    // Use no compression in jlink — the outer tar.gz handles compression
-    // more efficiently (avoids double-compression overhead).
-    // JDK 21+ uses zip-N format; older JDKs use numeric format.
-    let compress_flag = if java_version >= 21 {
-        "--compress=zip-0"
-    } else {
-        "--compress=0"
-    };
+    // No internal compression: the outer tar.gz compresses more efficiently and
+    // double-compressing just wastes CPU. The flag spelling changed across JDKs
+    // (numeric `0` vs `zip-0`), and the same major version differs across builds
+    // (GraalVM 21 accepts zip-N, Temurin 21 doesn't), so probe what this jlink
+    // actually takes instead of guessing from the version number.
+    let compress_flag = jlink_compress_flag(&jlink_bin);
 
     // When cross-compiling, point jlink to target JDK's jmods
     let module_path_str;
@@ -152,4 +175,31 @@ pub fn create_runtime(
     }
 
     Ok(runtime_path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compress_flag_prefers_zip_when_supported() {
+        // Modern jlink (JDK 21 GraalVM, 22+) advertises the zip-N spelling.
+        let help = "\
+      --compress <compress>  Compression to use in compressing resources:
+                             Accepted values are:
+                             zip-[0-9], where zip-0 provides no compression,
+                             and zip-9 provides the best compression.";
+        assert_eq!(compress_flag_from_help(help), "--compress=zip-0");
+    }
+
+    #[test]
+    fn compress_flag_falls_back_to_numeric() {
+        // Older jlink (and some JDK 21 builds like Temurin) only take 0/1/2.
+        let help = "\
+      --compress=<0|1|2>  Enable compression of resources:
+                          Level 0: No compression
+                          Level 1: Constant string sharing
+                          Level 2: ZIP";
+        assert_eq!(compress_flag_from_help(help), "--compress=0");
+    }
 }

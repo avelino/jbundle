@@ -591,7 +591,6 @@ async fn run_build(config: BuildConfig) -> Result<()> {
             &jdk_path,
             &modules,
             temp_dir.path(),
-            java_version,
             target_jdk_path.as_deref(),
         )?;
         Pipeline::finish_step(&step, "done");

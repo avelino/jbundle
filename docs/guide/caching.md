@@ -121,8 +121,8 @@ Removes all cached data.
 
 jbundle uses single-pass compression to minimize binary size:
 
-* **jlink runtime** — Created with no internal compression (`--compress=zip-0`), then compressed once via `tar.gz` at maximum level. This avoids double-compression overhead (compressing already-compressed data).
-* **Application JAR** — Compressed with gzip at maximum level.
+* **jlink runtime** — Created with no internal compression, then compressed once via `tar.gz` at maximum level. This avoids double-compression overhead (compressing already-compressed data). The `--compress` flag is probed from `jlink --help`, since the accepted spelling (`zip-0` vs numeric `0`) varies across JDK builds.
+* **Application JAR** — Compressed once with gzip at maximum level. When `--shrink` runs, it repacks the JAR with entries stored uncompressed so the gzip pass is the only compression step (Stored entries also load faster in the JVM).
 
 ## Performance Tips
 
