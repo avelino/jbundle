@@ -122,18 +122,18 @@ pub fn analyze_jar(jar_path: &Path) -> Result<AnalysisReport, PackError> {
             file_count: count,
         })
         .collect();
-    categories.sort_by(|a, b| b.size.cmp(&a.size));
+    categories.sort_by_key(|c| std::cmp::Reverse(c.size));
 
     let mut top_packages: Vec<(String, u64, usize)> =
         packages.into_iter().map(|(k, (s, c))| (k, s, c)).collect();
-    top_packages.sort_by(|a, b| b.1.cmp(&a.1));
+    top_packages.sort_by_key(|p| std::cmp::Reverse(p.1));
     top_packages.truncate(TOP_N);
 
     let mut clojure_namespaces: Vec<(String, u64, usize)> = clj_ns_map
         .into_iter()
         .map(|(k, (s, c))| (k, s, c))
         .collect();
-    clojure_namespaces.sort_by(|a, b| b.1.cmp(&a.1));
+    clojure_namespaces.sort_by_key(|n| std::cmp::Reverse(n.1));
     clojure_namespaces.truncate(TOP_N);
 
     let mut issues = Vec::new();
