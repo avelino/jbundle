@@ -79,7 +79,7 @@ impl DepsStrategy {
     fn to_args(&self) -> Vec<String> {
         match self {
             DepsStrategy::ToolsBuild { function } => {
-                vec![format!("-T:build"), function.clone()]
+                vec!["-T:build".to_string(), function.clone()]
             }
             DepsStrategy::ToolsBuildAlias { alias, function } => {
                 vec![format!("-T:{alias}"), function.clone()]
