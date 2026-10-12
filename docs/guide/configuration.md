@@ -44,7 +44,7 @@ All fields are optional.
 | `modules` | array | — | Manual module list (bypasses jdeps detection) |
 | `java_home` | string | — | Path to existing JDK installation (skips download). Falls back to `JAVA_HOME` env var. |
 | `jlink_runtime` | string | — | Path to existing jlink runtime to reuse |
-| `one_time_banner` | boolean | `false` | Show the banner only on the first run |
+| `one_time_banner` | boolean | `false` | Show the banner only on the first run (see note below) |
 
 ## Precedence
 
@@ -170,3 +170,8 @@ RUST_LOG=debug jbundle build --input . --output ./dist/app
 # Show only warnings
 RUST_LOG=warn jbundle build --input . --output ./dist/app
 ```
+
+### Note on `one_time_banner`
+
+The first run writes an empty marker to `~/.jbundle/cache/runs/<app hash>`, one per app version. `jbundle clean` removes them along with the rest of the cache. If two copies of the same binary start for the very first time at the same moment, both can show the banner; after that it stays quiet.
+

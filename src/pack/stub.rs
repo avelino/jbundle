@@ -111,14 +111,14 @@ exit 0
 }
 
 /// Wrap the banner so it only shows on the first run of this app. The marker
-/// lives in `~/.jbundle/runs/<app hash>`. If it can't be written (read-only
+/// lives in `~/.jbundle/cache/runs/<app hash>`, so `jbundle clean` removes it. If it can't be written (read-only
 /// HOME, sandbox) the banner is shown and the app still starts.
 fn one_time_banner_block(banner: &str, one_time: bool) -> String {
     if !one_time {
         return banner.to_string();
     }
     format!(
-        r#"JBUNDLE_RUNS="${{HOME}}/.jbundle/runs"
+        r#"JBUNDLE_RUNS="${{HOME}}/.jbundle/cache/runs"
 if [ ! -e "$JBUNDLE_RUNS/$APP_HASH" ]; then
     {{ mkdir -p "$JBUNDLE_RUNS" && : > "$JBUNDLE_RUNS/$APP_HASH"; }} 2>/dev/null || true
 {banner}
@@ -382,5 +382,18 @@ mod tests {
     fn stub_without_one_time_banner_has_no_marker() {
         let stub = generate(&params_default());
         assert!(!stub.contains(".jbundle/runs"));
+    }
+
+    #[test]
+    fn one_time_banner_wraps_compact_banner() {
+        let stub = generate(&StubParams {
+            compact_banner: true,
+            one_time_banner: true,
+            ..params_default()
+        });
+        assert!(stub.contains(r#"JBUNDLE_RUNS="${HOME}/.jbundle/cache/runs""#));
+        assert!(stub.contains(r#"if [ ! -e "$JBUNDLE_RUNS/$APP_HASH" ]; then"#));
+        assert!(stub.contains(r#"echo "binary created with jbundle.avelino.run" >&2"#));
+        assert!(!stub.contains("(_) |__"));
     }
 }
