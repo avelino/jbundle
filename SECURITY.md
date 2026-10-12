@@ -8,6 +8,8 @@ Only the latest tagged release gets security fixes. The `latest` pre-release is 
 
 Please don't open a public issue. Report it privately through GitHub: go to the [Security tab](https://github.com/avelino/jbundle/security/advisories/new) and open a draft advisory.
 
+If that link doesn't work for you, open an issue titled `Security contact request` with no details about the problem, and I'll reach out to you privately.
+
 Include what you found, how to reproduce it and which version you tested. I'll reply as soon as I can and keep you posted until it's fixed.
 
 ## Scope
