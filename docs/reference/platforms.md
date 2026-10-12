@@ -65,7 +65,7 @@ When no `--target` is specified, jbundle detects the current platform:
 | macOS | x86_64 | `macos-x64` |
 | Linux | x86_64 | `linux-x64` |
 | Linux | ARM64 | `linux-aarch64` |
-| Windows | x86_64 | `windows-x64` |
+| Windows | x86_64 | none, pass `--target` (Windows output is not supported yet) |
 
 ## CI/CD Example
 
