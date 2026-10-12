@@ -1,6 +1,8 @@
 name: Release
 
 on:
+  push:
+    tags: ["v*"]
   workflow_run:
     workflows: ["CI"]
     types: [completed]
@@ -12,31 +14,31 @@ jobs:
   prepare:
     name: Prepare Release
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'success'
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     outputs:
       is_tag: ${{ steps.check.outputs.is_tag }}
       is_main: ${{ steps.check.outputs.is_main }}
       version: ${{ steps.check.outputs.version }}
-      sha: ${{ github.event.workflow_run.head_sha }}
+      sha: ${{ steps.check.outputs.sha }}
     steps:
       - name: Check release type
         id: check
         run: |
-          HEAD_BRANCH="${{ github.event.workflow_run.head_branch }}"
-          echo "Head branch: $HEAD_BRANCH"
-
-          if [[ "$HEAD_BRANCH" == v* ]]; then
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            echo "Tag push: $TAG"
             echo "is_tag=true" >> $GITHUB_OUTPUT
             echo "is_main=false" >> $GITHUB_OUTPUT
-            echo "version=$HEAD_BRANCH" >> $GITHUB_OUTPUT
-          elif [[ "$HEAD_BRANCH" == "main" ]]; then
+            echo "version=$TAG" >> $GITHUB_OUTPUT
+            echo "sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+          else
+            echo "workflow_run from main"
             echo "is_tag=false" >> $GITHUB_OUTPUT
             echo "is_main=true" >> $GITHUB_OUTPUT
             echo "version=latest" >> $GITHUB_OUTPUT
-          else
-            echo "is_tag=false" >> $GITHUB_OUTPUT
-            echo "is_main=false" >> $GITHUB_OUTPUT
-            echo "version=" >> $GITHUB_OUTPUT
+            echo "sha=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
           fi
 
   build:
@@ -50,12 +52,23 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             artifact: jbundle-linux-x86_64
+            cross: false
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: jbundle-linux-aarch64
+            cross: true
           - target: x86_64-apple-darwin
             os: macos-latest
             artifact: jbundle-darwin-x86_64
+            cross: false
           - target: aarch64-apple-darwin
             os: macos-latest
             artifact: jbundle-darwin-aarch64
+            cross: false
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            artifact: jbundle-windows-x86_64
+            cross: false
 
     steps:
       - uses: actions/checkout@v4
@@ -70,20 +83,51 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
 
-      - name: Prepare artifact
+      - name: Build release binary
+        shell: bash
+        run: |
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+
+      - name: Package artifact (unix)
+        if: runner.os != 'Windows'
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/jbundle dist/${{ matrix.artifact }}
-          chmod +x dist/${{ matrix.artifact }}
+          cp target/${{ matrix.target }}/release/jbundle dist/jbundle
+          chmod +x dist/jbundle
+          cd dist
+          tar czf ${{ matrix.artifact }}.tar.gz jbundle
+          rm jbundle
 
-      - name: Upload artifact
+      - name: Package artifact (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item "target/${{ matrix.target }}/release/jbundle.exe" "dist/jbundle.exe"
+          Compress-Archive -Path "dist/jbundle.exe" -DestinationPath "dist/${{ matrix.artifact }}.zip"
+          Remove-Item "dist/jbundle.exe"
+
+      - name: Upload artifact (unix)
+        if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.tar.gz
+
+      - name: Upload artifact (windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.zip
 
   release-latest:
     name: Update Pre-release (latest)
@@ -137,12 +181,26 @@ jobs:
 
           > ⚠️ This is a development build and may be unstable. For production use, please use a tagged release.
 
+          ## Install
+
+          \`\`\`bash
+          curl -sSL https://raw.githubusercontent.com/avelino/jbundle/main/install.sh | sh
+          \`\`\`
+
+          ## Install (Windows)
+
+          \`\`\`powershell
+          irm https://raw.githubusercontent.com/avelino/jbundle/main/install.ps1 | iex
+          \`\`\`
+
           ## Downloads
           | Platform | Binary |
           |----------|--------|
-          | Linux x86_64 | \`jbundle-linux-x86_64\` |
-          | macOS x86_64 | \`jbundle-darwin-x86_64\` |
-          | macOS ARM64 | \`jbundle-darwin-aarch64\` |
+          | Linux x86_64 | \`jbundle-linux-x86_64.tar.gz\` |
+          | Linux ARM64 | \`jbundle-linux-aarch64.tar.gz\` |
+          | macOS x86_64 | \`jbundle-darwin-x86_64.tar.gz\` |
+          | macOS ARM64 | \`jbundle-darwin-aarch64.tar.gz\` |
+          | Windows x86_64 | \`jbundle-windows-x86_64.zip\` |
           " \
             release/*
         env:
@@ -160,6 +218,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -171,8 +231,16 @@ jobs:
           mkdir -p release
           VERSION="${{ needs.prepare.outputs.version }}"
           for dir in artifacts/*/; do
-            filename=$(basename "$dir")
-            cp "$dir"* "release/${filename}-${VERSION}"
+            for file in "$dir"*; do
+              filename=$(basename "$file")
+              if [[ "$filename" == *.zip ]]; then
+                base=$(basename "$filename" .zip)
+                cp "$file" "release/${base}-${VERSION}.zip"
+              else
+                base=$(basename "$filename" .tar.gz)
+                cp "$file" "release/${base}-${VERSION}.tar.gz"
+              fi
+            done
           done
           ls -la release/
 
@@ -188,6 +256,7 @@ jobs:
           gh release create "$VERSION" \
             --title "jbundle $VERSION" \
             --generate-notes \
+            --notes-start-tag "$(git tag --sort=-v:refname | head -2 | tail -1)" \
             release/*
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

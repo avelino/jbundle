@@ -13,14 +13,8 @@ pub struct Cli {
     pub command: Command,
 }
 
-#[derive(clap::ValueEnum, serde::Deserialize, Copy, Clone, Debug, PartialEq)]
-pub enum BannerSize {
-    None,
-    Compact,
-    Normal,
-}
-
 #[derive(Subcommand)]
+#[allow(clippy::large_enum_variant)]
 pub enum Command {
     /// Build a self-contained binary from a JVM project or JAR
     Build {
@@ -43,6 +37,10 @@ pub enum Command {
         /// Extra JVM arguments passed to the application
         #[arg(long)]
         jvm_args: Vec<String>,
+
+        /// Extra arguments passed to the build tool (e.g. Gradle -P flags)
+        #[arg(long)]
+        build_args: Vec<String>,
 
         /// Shrink the uberjar by removing non-essential files and recompressing
         #[arg(long, default_value_t = false, num_args = 0..=1, default_missing_value = "true")]
@@ -72,6 +70,10 @@ pub enum Command {
         #[arg(long)]
         modules: Option<String>,
 
+        /// Path to existing JDK installation (skips JDK download)
+        #[arg(long)]
+        java_home: Option<PathBuf>,
+
         /// Path to existing jlink runtime to reuse
         #[arg(long)]
         jlink_runtime: Option<PathBuf>,
@@ -80,13 +82,17 @@ pub enum Command {
         #[arg(short, long)]
         verbose: bool,
 
-        /// Use a compact banner in the wrapper (deprecated: use `--banner-size` instead)
-        #[arg(long, group = "legacy", conflicts_with = "banner_size")]
+        /// Deprecated: use `--banner-size compact`
+        #[arg(long, conflicts_with = "banner_size")]
         compact_banner: bool,
 
-        /// Set the banner size
+        /// Banner the binary prints on start: off, compact or normal
         #[arg(long, value_enum)]
-        banner_size: Option<BannerSize>,
+        banner_size: Option<crate::config::BannerSize>,
+
+        /// Show what would be done without executing anything
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Analyze a JAR or project and report size breakdown

@@ -153,6 +153,7 @@ New options for multi-project builds:
 |------|-------------|
 | `--gradle-project <NAME>` | Build specific subproject |
 | `--all` | Build all application subprojects |
+| `--build-args <ARGS>` | Extra arguments passed to Gradle (e.g., `-P` flags) |
 | `--modules <LIST>` | Manual module list (comma-separated) |
 | `--jlink-runtime <PATH>` | Reuse existing jlink runtime |
 
@@ -164,6 +165,9 @@ gradle_project = "app"
 
 # Manual module override
 modules = ["java.base", "java.sql"]
+
+# Extra build arguments
+build_args = ["-PeaJdkBuild=false"]
 
 # Reuse existing runtime
 jlink_runtime = "./build/jlink"

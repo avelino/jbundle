@@ -10,16 +10,17 @@ Avoid repeating flags by creating a `jbundle.toml` in your project root.
 java_version = 21
 target = "linux-x64"
 jvm_args = ["-Xmx512m", "-XX:+UseZGC"]
+build_args = ["-PeaJdkBuild=false"]
 profile = "cli"
 shrink = true
 appcds = true
 crac = false
-compact_banner = false # deprecated, use banner_size instead
-banner_size = "Normal"
+banner_size = "normal"
 
 # Gradle multi-project options
 gradle_project = "app"
 modules = ["java.base", "java.sql"]
+java_home = "/usr/lib/jvm/java-21"
 jlink_runtime = "./build/jlink"
 ```
 
@@ -27,28 +28,22 @@ All fields are optional.
 
 ## Options
 
-| Field            | Type    | Default          | Description                                          |
-|------------------|---------|------------------|------------------------------------------------------|
-| `java_version`   | integer | `21`             | JDK version to bundle                                |
-| `target`         | string  | current platform | Target platform (`linux-x64`, `macos-aarch64`, etc.) |
-| `jvm_args`       | array   | `[]`             | JVM arguments passed at runtime                      |
-| `profile`        | string  | `"server"`       | JVM profile (`"cli"` or `"server"`)                  |
-| `shrink`         | boolean | `false`          | Shrink uberjar by removing non-essential files       |
-| `appcds`         | boolean | `true`           | Enable AppCDS for faster startup                     |
-| `crac`           | boolean | `false`          | Enable CRaC checkpoint (Linux only)                  |
-| `compact_banner` | boolean | `false`          | Use a compact banner in the wrapper *(deprecated)*   |
-| `banner_size`    | enum    | `Normal`         | Set the banner size in the wrapper                   |
-| `gradle_project` | string  | —                | Gradle subproject to build (for multi-project)       |
-| `modules`        | array   | —                | Manual module list (bypasses jdeps detection)        |
-| `jlink_runtime`  | string  | —                | Path to existing jlink runtime to reuse              |
-
-The possible values for the banner size (in both command line and configuration file) are:
-
-| Value     | Result                     |
-|-----------|----------------------------|
-| `None`    | No banner is displayed     |
-| `Compact` | A compact, one-line banner |
-| `Normal`  | ASCII art banner           |
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `java_version` | integer | `21` | JDK version to bundle |
+| `target` | string | current platform | Target platform (`linux-x64`, `macos-aarch64`, etc.) |
+| `jvm_args` | array | `[]` | JVM arguments passed at runtime |
+| `build_args` | array | `[]` | Extra arguments passed to the build tool |
+| `profile` | string | `"server"` | JVM profile (`"cli"` or `"server"`) |
+| `shrink` | boolean | `false` | Shrink uberjar by removing non-essential files |
+| `appcds` | boolean | `true` | Enable AppCDS for faster startup |
+| `crac` | boolean | `false` | Enable CRaC checkpoint (Linux only) |
+| `banner_size` | string | `"normal"` | Banner the binary prints on start: `"off"`, `"compact"` or `"normal"` |
+| `compact_banner` | boolean | `false` | Deprecated, same as `banner_size = "compact"` |
+| `gradle_project` | string | — | Gradle subproject to build (for multi-project) |
+| `modules` | array | — | Manual module list (bypasses jdeps detection) |
+| `java_home` | string | — | Path to existing JDK installation (skips download). Falls back to `JAVA_HOME` env var. |
+| `jlink_runtime` | string | — | Path to existing jlink runtime to reuse |
 
 ## Precedence
 
@@ -126,6 +121,18 @@ When jdeps detection is insufficient:
 modules = ["java.base", "java.sql", "java.desktop", "jdk.incubator.vector"]
 ```
 
+### Custom Build Arguments
+
+Pass extra flags to the build tool (e.g., Gradle project properties):
+
+```toml
+# jbundle.toml
+gradle_project = "app"
+build_args = ["-PeaJdkBuild=false", "-PprojVersion=1.2.3"]
+```
+
+Works with any build system. Arguments are appended to the build command.
+
 ### Reusing Existing Runtime
 
 Skip jlink if you have a pre-built runtime:
@@ -135,7 +142,23 @@ Skip jlink if you have a pre-built runtime:
 jlink_runtime = "./build/jlink"
 ```
 
+### Reusing Local JDK
+
+Skip JDK download by reusing an existing installation:
+
+```toml
+# jbundle.toml
+java_home = "/usr/lib/jvm/java-21"
+```
+
+If `java_home` is not set in the config or CLI, jbundle automatically checks the `JAVA_HOME` environment variable.
+
 ## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `JAVA_HOME` | Path to existing JDK installation (used when `--java-home` and `java_home` config are not set) |
+| `RUST_LOG` | Logging level (`error`, `warn`, `info`, `debug`, `trace`) |
 
 For debugging, set `RUST_LOG` to control jbundle's logging:
 

@@ -12,29 +12,32 @@ jbundle build [OPTIONS] --input <PATH> --output <PATH>
 
 ### Required Arguments
 
-| Argument          | Description                   |
-|-------------------|-------------------------------|
-| `--input <PATH>`  | Project directory or JAR file |
-| `--output <PATH>` | Output binary path            |
+| Argument | Description |
+|----------|-------------|
+| `--input <PATH>` | Project directory or JAR file |
+| `--output <PATH>` | Output binary path |
 
 ### Options
 
-| Option                    | Default  | Description                                                       |
-|---------------------------|----------|-------------------------------------------------------------------|
-| `--java-version <N>`      | `21`     | JDK version to bundle (11, 17, 21, 22, 23, 24, 25)                |
-| `--target <TARGET>`       | current  | Target platform (see [Platforms](platforms.md))                   |
-| `--profile <PROFILE>`     | `server` | JVM profile (`cli` or `server`)                                   |
-| `--jvm-args <ARGS>`       | —        | JVM arguments (e.g., `-Xmx512m`)                                  |
-| `--shrink [true\|false]`  | `false`  | Shrink uberjar by removing non-essential files                    |
-| `--no-appcds`             | —        | Disable AppCDS generation                                         |
-| `--crac`                  | —        | Enable CRaC checkpoint (Linux only)                               |
-| `--compact-banner`        | `false`  | Use a compact banner in the wrapper *(deprecated)*                |
-| `--banner-size <SIZE>`    | `Normal` | Set the banner size in the wrapper                                |
-| `--gradle-project <NAME>` | —        | Gradle subproject to build (multi-project)                        |
-| `--all`                   | —        | Build all application subprojects (Gradle)                        |
-| `--modules <LIST>`        | —        | Manual module list, comma-separated                               |
-| `--jlink-runtime <PATH>`  | —        | Path to existing jlink runtime to reuse (must contain `bin/java`) |
-| `-v, --verbose`           | —        | Enable verbose output                                             |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--java-version <N>` | `21` | JDK version to bundle (11, 17, 21, 22, 23, 24, 25) |
+| `--target <TARGET>` | current | Target platform (see [Platforms](platforms.md)) |
+| `--profile <PROFILE>` | `server` | JVM profile (`cli` or `server`) |
+| `--jvm-args <ARGS>` | — | JVM arguments (e.g., `-Xmx512m`) |
+| `--build-args <ARGS>` | — | Extra arguments passed to the build tool (e.g., Gradle `-P` flags) |
+| `--shrink [true\|false]` | `false` | Shrink uberjar by removing non-essential files |
+| `--no-appcds` | — | Disable AppCDS generation |
+| `--crac` | — | Enable CRaC checkpoint (Linux only) |
+| `--banner-size <SIZE>` | `normal` | Banner the binary prints on start (`off`, `compact`, `normal`) |
+| `--compact-banner` | `false` | Deprecated, same as `--banner-size compact` |
+| `--gradle-project <NAME>` | — | Gradle subproject to build (multi-project) |
+| `--all` | — | Build all application subprojects (Gradle) |
+| `--modules <LIST>` | — | Manual module list, comma-separated |
+| `--java-home <PATH>` | — | Path to existing JDK installation (skips JDK download). Falls back to `JAVA_HOME` env var. |
+| `--jlink-runtime <PATH>` | — | Path to existing jlink runtime to reuse (must contain `bin/java`) |
+| `--dry-run` | — | Show build plan without executing anything |
+| `-v, --verbose` | — | Enable verbose output |
 
 ### Examples
 
@@ -75,8 +78,20 @@ jbundle build --input . --output ./dist --all
 # Manual module specification
 jbundle build --input . --output ./app --modules java.base,java.sql,java.logging
 
+# Use existing JDK (skip download)
+jbundle build --input . --output ./app --java-home /usr/lib/jvm/java-21
+
 # Reuse existing jlink runtime
 jbundle build --input . --output ./app --jlink-runtime ./build/jlink
+
+# Pass extra arguments to Gradle
+jbundle build --input . --output ./app --build-args "-PeaJdkBuild=false" --build-args "-PprojVersion=xyz"
+
+# Preview build plan without executing
+jbundle build --input . --output ./app --dry-run
+
+# Dry-run with specific target to verify cross-compilation setup
+jbundle build --input . --output ./app --target linux-x64 --dry-run
 ```
 
 ## jbundle analyze
@@ -89,9 +104,9 @@ jbundle analyze [OPTIONS]
 
 ### Options
 
-| Option           | Default | Description                             |
-|------------------|---------|-----------------------------------------|
-| `--input <PATH>` | `.`     | Project directory or pre-built JAR file |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--input <PATH>` | `.` | Project directory or pre-built JAR file |
 
 When given a project directory, jbundle detects the build system, builds the uberjar, then analyzes it. When given a JAR file directly, it skips the build step.
 
@@ -161,16 +176,17 @@ jbundle build --help
 
 ## Exit Codes
 
-| Code | Meaning                                                |
-|------|--------------------------------------------------------|
-| `0`  | Success                                                |
-| `1`  | Build error (compilation failed, JAR not found, etc.)  |
-| `2`  | Configuration error (invalid arguments, missing input) |
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | Build error (compilation failed, JAR not found, etc.) |
+| `2` | Configuration error (invalid arguments, missing input) |
 
 ## Environment Variables
 
-| Variable   | Description                                               |
-|------------|-----------------------------------------------------------|
+| Variable | Description |
+|----------|-------------|
+| `JAVA_HOME` | Path to existing JDK installation (used when `--java-home` is not specified) |
 | `RUST_LOG` | Logging level (`error`, `warn`, `info`, `debug`, `trace`) |
 
 ### Logging Examples

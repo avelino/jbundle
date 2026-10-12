@@ -1,4 +1,4 @@
-use crate::cli::BannerSize;
+use crate::config::BannerSize;
 use crate::config::JvmProfile;
 
 pub struct StubParams<'a> {
@@ -40,7 +40,7 @@ pub fn generate(params: &StubParams) -> String {
     let crac_size = params.crac_size;
 
     let jbundle_banner = match params.banner_size {
-        BannerSize::None => "# binary created with jbundle.avelino.run",
+        BannerSize::Off => "",
         BannerSize::Compact => r#"echo "binary created with jbundle.avelino.run" >&2"#,
         BannerSize::Normal => {
             r#"cat >&2 <<'BANNER'
@@ -147,7 +147,7 @@ mod tests {
             jvm_args: &[],
             appcds: true,
             java_version: 21,
-            banner_size: BannerSize::NORMAL,
+            banner_size: BannerSize::Normal,
         }
     }
 
@@ -313,5 +313,25 @@ mod tests {
         let finalized = finalize_stub(&stub);
         assert!(!finalized.contains("__STUB_SIZE__"));
         assert!(finalized.contains("STUB_SIZE="));
+    }
+
+    #[test]
+    fn stub_compact_banner_is_one_line() {
+        let stub = generate(&StubParams {
+            banner_size: BannerSize::Compact,
+            ..params_default()
+        });
+        assert!(stub.contains(r#"echo "binary created with jbundle.avelino.run" >&2"#));
+        assert!(!stub.contains("(_) |__"));
+    }
+
+    #[test]
+    fn stub_banner_off_prints_nothing() {
+        let stub = generate(&StubParams {
+            banner_size: BannerSize::Off,
+            ..params_default()
+        });
+        assert!(!stub.contains("BANNER"));
+        assert!(!stub.contains("jbundle.avelino.run"));
     }
 }

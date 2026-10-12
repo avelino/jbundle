@@ -7,7 +7,7 @@ use std::path::Path;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 
-use crate::cli::BannerSize;
+use crate::config::BannerSize;
 use crate::config::JvmProfile;
 use crate::error::PackError;
 
@@ -108,7 +108,7 @@ pub fn create_binary(opts: &PackOptions) -> Result<(), PackError> {
 fn compress_file(input: &Path, output: &Path) -> Result<(), PackError> {
     let mut src = std::fs::File::open(input)?;
     let dst = std::fs::File::create(output)?;
-    let mut encoder = GzEncoder::new(dst, Compression::default());
+    let mut encoder = GzEncoder::new(dst, Compression::best());
     std::io::copy(&mut src, &mut encoder)?;
     encoder.finish()?;
     Ok(())

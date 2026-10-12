@@ -12,7 +12,8 @@ pub struct ShrinkResult {
     pub shrunk_size: u64,
 }
 
-/// Repacks a JAR removing non-essential files and using maximum compression.
+/// Repacks a JAR removing non-essential files, storing entries uncompressed
+/// (the outer `pack` step gzips the result, so compressing here is redundant).
 /// Safe for Clojure apps: keeps all .clj, .class, and resource files.
 pub fn shrink_jar(jar_path: &Path) -> Result<ShrinkResult, PackError> {
     let original_size = std::fs::metadata(jar_path)
@@ -30,9 +31,11 @@ pub fn shrink_jar(jar_path: &Path) -> Result<ShrinkResult, PackError> {
         .map_err(|e| PackError::ShrinkFailed(format!("cannot create output: {e}")))?;
     let mut writer = ZipWriter::new(out_file);
 
-    let options = SimpleFileOptions::default()
-        .compression_method(CompressionMethod::Deflated)
-        .compression_level(Some(9));
+    // Store entries uncompressed: the outer `pack` step always gzips the whole
+    // JAR, so compressing here would double-compress (wasted CPU, no size gain).
+    // Stored entries also load faster in the JVM (no per-class inflate), which
+    // helps the `cli` fast-startup profile.
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
 
     let mut buf = Vec::new();
 
@@ -231,6 +234,23 @@ mod tests {
         assert!(!names.contains(&"com/example/Main.java".to_string()));
 
         // Clean up
+        let _ = std::fs::remove_file(&result.jar_path);
+    }
+
+    #[test]
+    fn shrink_stores_entries_uncompressed() {
+        // The outer `pack` step gzips the JAR, so entries must be Stored here to
+        // avoid double-compression. Guard against a regression back to Deflated.
+        let jar = create_test_jar(&[("com/example/Main.class", b"fake class bytes")]);
+
+        let result = shrink_jar(jar.path()).unwrap();
+
+        let out_file = std::fs::File::open(&result.jar_path).unwrap();
+        let mut out_archive = ZipArchive::new(out_file).unwrap();
+        let entry = out_archive.by_index(0).unwrap();
+        assert_eq!(entry.compression(), CompressionMethod::Stored);
+
+        drop(entry);
         let _ = std::fs::remove_file(&result.jar_path);
     }
 }

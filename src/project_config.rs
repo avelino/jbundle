@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::cli::BannerSize;
+use crate::config::BannerSize;
 use anyhow::Result;
 use serde::Deserialize;
 
@@ -13,6 +13,7 @@ pub struct ProjectConfig {
     pub target: Option<String>,
     pub shrink: Option<bool>,
     pub jvm_args: Option<Vec<String>>,
+    pub build_args: Option<Vec<String>>,
     pub profile: Option<String>,
     pub appcds: Option<bool>,
     pub crac: Option<bool>,
@@ -22,6 +23,8 @@ pub struct ProjectConfig {
     pub gradle_project: Option<String>,
     /// Manual module override (bypasses jdeps detection)
     pub modules: Option<Vec<String>>,
+    /// Path to existing JDK installation (skips JDK download)
+    pub java_home: Option<String>,
     /// Path to existing jlink runtime to reuse
     pub jlink_runtime: Option<String>,
 }
@@ -55,13 +58,15 @@ java_version = 17
 target = "linux-x64"
 shrink = true
 jvm_args = ["-Xmx512m", "-XX:+UseZGC"]
+build_args = ["-PeaJdkBuild=false", "-PprojVersion=xyz"]
 profile = "cli"
 appcds = false
 crac = true
 compact_banner = false
-banner_size = "NORMAL"
+banner_size = "compact"
 gradle_project = "jabkit"
 modules = ["java.base", "java.sql"]
+java_home = "/usr/lib/jvm/java-21"
 jlink_runtime = "./build/jlink"
 "#,
         )
@@ -75,17 +80,44 @@ jlink_runtime = "./build/jlink"
             config.jvm_args,
             Some(vec!["-Xmx512m".to_string(), "-XX:+UseZGC".to_string()])
         );
+        assert_eq!(
+            config.build_args,
+            Some(vec![
+                "-PeaJdkBuild=false".to_string(),
+                "-PprojVersion=xyz".to_string()
+            ])
+        );
         assert_eq!(config.profile.as_deref(), Some("cli"));
         assert_eq!(config.appcds, Some(false));
         assert_eq!(config.crac, Some(true));
         assert_eq!(config.compact_banner, Some(false));
-        assert_eq!(config.banner_size, Some(BannerSize::NORMAL));
+        assert_eq!(config.banner_size, Some(BannerSize::Compact));
         assert_eq!(config.gradle_project.as_deref(), Some("jabkit"));
         assert_eq!(
             config.modules,
             Some(vec!["java.base".to_string(), "java.sql".to_string()])
         );
+        assert_eq!(config.java_home.as_deref(), Some("/usr/lib/jvm/java-21"));
         assert_eq!(config.jlink_runtime.as_deref(), Some("./build/jlink"));
+    }
+
+    #[test]
+    fn parse_config_with_build_args() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join(CONFIG_FILE),
+            r#"
+build_args = ["-PeaJdkBuild=false"]
+"#,
+        )
+        .unwrap();
+
+        let config = load_project_config(dir.path()).unwrap().unwrap();
+        assert_eq!(
+            config.build_args,
+            Some(vec!["-PeaJdkBuild=false".to_string()])
+        );
+        assert_eq!(config.jvm_args, None);
     }
 
     #[test]
@@ -124,6 +156,22 @@ jlink_runtime = "./build/jlink"
 
         let result = load_project_config(dir.path());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_config_with_java_home() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join(CONFIG_FILE),
+            r#"
+java_home = "/usr/lib/jvm/java-21"
+"#,
+        )
+        .unwrap();
+
+        let config = load_project_config(dir.path()).unwrap().unwrap();
+        assert_eq!(config.java_home.as_deref(), Some("/usr/lib/jvm/java-21"));
+        assert_eq!(config.jlink_runtime, None);
     }
 
     #[test]
