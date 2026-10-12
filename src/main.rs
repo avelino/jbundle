@@ -34,6 +34,7 @@ async fn main() -> Result<()> {
 
     // Extract verbose flag before initializing tracing
     let verbose = matches!(&cli.command, Command::Build { verbose: true, .. });
+    let dry_run = matches!(&cli.command, Command::Build { dry_run: true, .. });
 
     let default_level = if verbose {
         "jbundle=info"
@@ -56,6 +57,7 @@ async fn main() -> Result<()> {
             java_version,
             target,
             jvm_args,
+            build_args,
             shrink,
             profile,
             no_appcds,
@@ -63,10 +65,12 @@ async fn main() -> Result<()> {
             gradle_project,
             all,
             modules,
+            java_home,
             jlink_runtime,
             verbose: _,
             compact_banner,
             one_time_banner,
+            dry_run: _,
         } => {
             let input_path =
                 std::fs::canonicalize(&input).unwrap_or_else(|_| PathBuf::from(&input));
@@ -107,6 +111,15 @@ async fn main() -> Result<()> {
                     .unwrap_or_default()
             } else {
                 jvm_args
+            };
+
+            let build_args = if build_args.is_empty() {
+                project_config
+                    .as_ref()
+                    .and_then(|c| c.build_args.clone())
+                    .unwrap_or_default()
+            } else {
+                build_args
             };
 
             let shrink = shrink
@@ -160,6 +173,16 @@ async fn main() -> Result<()> {
                 .map(|m| m.split(',').map(|s| s.trim().to_string()).collect())
                 .or_else(|| project_config.as_ref().and_then(|c| c.modules.clone()));
 
+            // Java home path (CLI > config file > JAVA_HOME env var)
+            let java_home = java_home
+                .or_else(|| {
+                    project_config
+                        .as_ref()
+                        .and_then(|c| c.java_home.as_ref())
+                        .map(PathBuf::from)
+                })
+                .or_else(|| std::env::var("JAVA_HOME").ok().map(PathBuf::from));
+
             // Jlink runtime path (CLI > config file)
             let jlink_runtime = jlink_runtime.or_else(|| {
                 project_config
@@ -195,9 +218,12 @@ async fn main() -> Result<()> {
                 compact_banner,
                 one_time_banner,
                 gradle_project,
+                build_args,
                 build_all: all,
                 modules_override,
+                java_home,
                 jlink_runtime,
+                dry_run,
             };
 
             if config.build_all {
@@ -354,16 +380,22 @@ async fn run_build_all(config: BuildConfig) -> Result<()> {
     Ok(())
 }
 
-fn calculate_steps(is_jar_input: bool, shrink: bool, crac: bool) -> usize {
+fn calculate_steps(is_jar_input: bool, shrink: bool, crac: bool, is_cross: bool) -> usize {
     let base = if is_jar_input { 1 } else { 2 }; // JAR or detect+build
     let shrink_step = if shrink { 1 } else { 0 };
     let crac_step = if crac { 1 } else { 0 };
-    base + shrink_step + 4 + crac_step // +4 = JDK, jdeps, jlink, pack
+    let jdk_steps = if is_cross { 2 } else { 1 }; // host + target JDK
+    base + shrink_step + jdk_steps + 3 + crac_step // +3 = jdeps, jlink, pack
 }
 
 async fn run_build(config: BuildConfig) -> Result<()> {
+    if config.dry_run {
+        return run_dry_run(&config);
+    }
+
     let is_jar_input = config.input.extension().is_some_and(|e| e == "jar");
-    let total_steps = calculate_steps(is_jar_input, config.shrink, config.crac);
+    let is_cross = config.target.is_cross_compile();
+    let total_steps = calculate_steps(is_jar_input, config.shrink, config.crac, is_cross);
     let mut pipeline = Pipeline::new(total_steps);
 
     eprintln!();
@@ -384,7 +416,7 @@ async fn run_build(config: BuildConfig) -> Result<()> {
 
                 let build_desc = build::build_command_description(system);
                 let step = pipeline.start_step(&format!("Building uberjar ({})", build_desc));
-                let jar = build::build_uberjar(&config.input, system)?;
+                let jar = build::build_uberjar(&config.input, system, &config.build_args)?;
                 Pipeline::finish_step(
                     &step,
                     &format!("{}", jar.file_name().unwrap_or_default().to_string_lossy()),
@@ -406,7 +438,11 @@ async fn run_build(config: BuildConfig) -> Result<()> {
 
                 let build_desc = build::gradle_subproject_command_description(&selected.name);
                 let step = pipeline.start_step(&format!("Building uberjar ({})", build_desc));
-                let jar = build::build_gradle_subproject(&project.root, &selected.name)?;
+                let jar = build::build_gradle_subproject(
+                    &project.root,
+                    &selected.name,
+                    &config.build_args,
+                )?;
                 Pipeline::finish_step(
                     &step,
                     &format!("{}", jar.file_name().unwrap_or_default().to_string_lossy()),
@@ -454,7 +490,7 @@ async fn run_build(config: BuildConfig) -> Result<()> {
             tracing::warn!("provided jlink runtime not found: {}", p.display());
             return None;
         }
-        let java_bin = p.join("bin").join("java");
+        let java_bin = jvm::cache::jdk_bin(p, "java");
         if !java_bin.exists() {
             tracing::warn!("provided jlink runtime missing bin/java: {}", p.display());
             return None;
@@ -463,10 +499,63 @@ async fn run_build(config: BuildConfig) -> Result<()> {
         Some(p.clone())
     });
 
-    // Step: Download/ensure JDK
-    let step = pipeline.start_step(&format!("Downloading JDK {}", java_version));
-    let jdk_path = jvm::ensure_jdk(java_version, &config.target, pipeline.mp()).await?;
-    Pipeline::finish_step(&step, "ready");
+    // Step: Ensure JDK (use local java_home or download)
+    // For cross-compilation, we need the host JDK (to run jdeps/jlink)
+    // and the target JDK (for jmods).
+    let is_cross = config.target.is_cross_compile();
+    let (jdk_path, target_jdk_path) = if let Some(ref java_home) = config.java_home {
+        let step = pipeline.start_step("Using local JDK");
+        let jh = std::fs::canonicalize(java_home).unwrap_or_else(|_| java_home.clone());
+        if !jh.exists() {
+            return Err(PackError::InvalidJavaHome(format!(
+                "path does not exist: {}",
+                jh.display()
+            ))
+            .into());
+        }
+        let java_bin = jvm::cache::jdk_bin(&jh, "java");
+        if !java_bin.exists() {
+            return Err(PackError::InvalidJavaHome(format!(
+                "bin/java not found in {}",
+                jh.display()
+            ))
+            .into());
+        }
+        Pipeline::finish_step(&step, &format!("{}", jh.display()));
+
+        // If cross-compiling with local JDK, still need target JDK for jmods
+        let target_jdk = if is_cross {
+            let step = pipeline.start_step(&format!(
+                "Downloading target JDK {} ({:?})",
+                java_version, config.target
+            ));
+            let target = jvm::ensure_jdk(java_version, &config.target, pipeline.mp()).await?;
+            Pipeline::finish_step(&step, "ready");
+            Some(target)
+        } else {
+            None
+        };
+        (jh, target_jdk)
+    } else if is_cross {
+        // Cross-compilation: download host JDK for tools + target JDK for jmods
+        let host_target = Target::current();
+        let step = pipeline.start_step(&format!("Downloading host JDK {}", java_version));
+        let host_jdk = jvm::ensure_jdk(java_version, &host_target, pipeline.mp()).await?;
+        Pipeline::finish_step(&step, "ready");
+
+        let step = pipeline.start_step(&format!(
+            "Downloading target JDK {} ({:?})",
+            java_version, config.target
+        ));
+        let target_jdk = jvm::ensure_jdk(java_version, &config.target, pipeline.mp()).await?;
+        Pipeline::finish_step(&step, "ready");
+        (host_jdk, Some(target_jdk))
+    } else {
+        let step = pipeline.start_step(&format!("Downloading JDK {}", java_version));
+        let jdk_path = jvm::ensure_jdk(java_version, &config.target, pipeline.mp()).await?;
+        Pipeline::finish_step(&step, "ready");
+        (jdk_path, None)
+    };
 
     let temp_dir = tempfile::tempdir()?;
 
@@ -506,7 +595,12 @@ async fn run_build(config: BuildConfig) -> Result<()> {
         existing
     } else {
         let step = pipeline.start_step("Creating minimal runtime (jlink)");
-        let runtime = jlink::create_runtime(&jdk_path, &modules, temp_dir.path())?;
+        let runtime = jlink::create_runtime(
+            &jdk_path,
+            &modules,
+            temp_dir.path(),
+            target_jdk_path.as_deref(),
+        )?;
         Pipeline::finish_step(&step, "done");
         runtime
     };
@@ -554,6 +648,115 @@ async fn run_build(config: BuildConfig) -> Result<()> {
     );
 
     pipeline.finish(&config.output.display().to_string());
+
+    Ok(())
+}
+
+fn run_dry_run(config: &BuildConfig) -> Result<()> {
+    let is_jar_input = config.input.extension().is_some_and(|e| e == "jar");
+    let is_cross = config.target.is_cross_compile();
+
+    eprintln!();
+    eprintln!(
+        "[dry-run] Build plan for {} → {}",
+        config.input.display(),
+        config.output.display()
+    );
+    eprintln!();
+
+    // Build system
+    if is_jar_input {
+        eprintln!(
+            "  Input:         Pre-built JAR ({})",
+            config.input.display()
+        );
+    } else {
+        match detect::detect_build_system_enhanced(&config.input) {
+            Ok(detect::DetectedBuild::Simple(system)) => {
+                let desc = build::build_command_description(system);
+                eprintln!("  Build system:  {:?} ({})", system, desc);
+            }
+            Ok(detect::DetectedBuild::GradleMultiProject {
+                app_subprojects, ..
+            }) => {
+                let names: Vec<_> = app_subprojects.iter().map(|s| s.name.as_str()).collect();
+                let selected = config
+                    .gradle_project
+                    .as_deref()
+                    .unwrap_or(if names.len() == 1 {
+                        names[0]
+                    } else {
+                        "<interactive>"
+                    });
+                eprintln!("  Build system:  Gradle multi-project ({})", selected);
+                eprintln!("  Subprojects:   {}", names.join(", "));
+            }
+            Err(e) => {
+                eprintln!("  Build system:  ⚠ detection failed: {e}");
+            }
+        }
+    }
+
+    // Target
+    eprintln!("  Target:        {:?}", config.target);
+    if is_cross {
+        eprintln!("  Cross-compile: yes (host: {:?})", Target::current());
+    }
+
+    // JDK
+    eprintln!("  JDK version:   {}", config.java_version);
+    if let Some(ref jh) = config.java_home {
+        eprintln!("  JDK source:    local ({})", jh.display());
+    } else {
+        let cache_path = jvm::cache::cached_jdk_path(config.java_version, &config.target)?;
+        if cache_path.exists() {
+            eprintln!("  JDK source:    cached ✓");
+        } else {
+            eprintln!("  JDK source:    will download from Adoptium");
+        }
+    }
+
+    // Modules
+    if let Some(ref modules) = config.modules_override {
+        eprintln!(
+            "  Modules:       manual override ({} modules)",
+            modules.len()
+        );
+    } else {
+        eprintln!("  Modules:       auto-detect (jdeps)");
+    }
+
+    // Runtime
+    if let Some(ref rt) = config.jlink_runtime {
+        eprintln!("  Runtime:       reuse existing ({})", rt.display());
+    } else {
+        eprintln!("  Runtime:       create via jlink");
+    }
+
+    // Options
+    eprintln!("  Profile:       {}", config.profile.name());
+    eprintln!(
+        "  Shrink:        {}",
+        if config.shrink { "enabled" } else { "disabled" }
+    );
+    eprintln!(
+        "  AppCDS:        {}",
+        if config.appcds { "enabled" } else { "disabled" }
+    );
+    eprintln!(
+        "  CRaC:          {}",
+        if config.crac { "enabled" } else { "disabled" }
+    );
+    if !config.jvm_args.is_empty() {
+        eprintln!("  JVM args:      {}", config.jvm_args.join(" "));
+    }
+    if !config.build_args.is_empty() {
+        eprintln!("  Build args:    {}", config.build_args.join(" "));
+    }
+
+    eprintln!();
+    eprintln!("  No actions taken.");
+    eprintln!();
 
     Ok(())
 }

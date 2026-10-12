@@ -151,6 +151,22 @@ gradle build -x test
 # Then looks for *-all.jar in build/libs/
 ```
 
+### Custom Build Arguments
+
+Pass extra flags to Gradle (or any build system) with `--build-args`:
+
+```bash
+jbundle build --input . --output ./app --build-args "-PeaJdkBuild=false" --build-args "-PprojVersion=xyz"
+```
+
+Or in `jbundle.toml`:
+
+```toml
+build_args = ["-PeaJdkBuild=false", "-PprojVersion=xyz"]
+```
+
+Arguments are appended after jbundle's default flags (e.g., after `-x test` for Gradle).
+
 ### Multi-Project Builds
 
 For Gradle projects with multiple subprojects, jbundle auto-detects those with the `application` plugin. See [Gradle Multi-Project](gradle-multi-project.md) for details.

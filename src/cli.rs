@@ -14,6 +14,7 @@ pub struct Cli {
 }
 
 #[derive(Subcommand)]
+#[allow(clippy::large_enum_variant)]
 pub enum Command {
     /// Build a self-contained binary from a JVM project or JAR
     Build {
@@ -36,6 +37,10 @@ pub enum Command {
         /// Extra JVM arguments passed to the application
         #[arg(long)]
         jvm_args: Vec<String>,
+
+        /// Extra arguments passed to the build tool (e.g. Gradle -P flags)
+        #[arg(long)]
+        build_args: Vec<String>,
 
         /// Shrink the uberjar by removing non-essential files and recompressing
         #[arg(long, default_value_t = false, num_args = 0..=1, default_missing_value = "true")]
@@ -65,6 +70,10 @@ pub enum Command {
         #[arg(long)]
         modules: Option<String>,
 
+        /// Path to existing JDK installation (skips JDK download)
+        #[arg(long)]
+        java_home: Option<PathBuf>,
+
         /// Path to existing jlink runtime to reuse
         #[arg(long)]
         jlink_runtime: Option<PathBuf>,
@@ -80,6 +89,10 @@ pub enum Command {
         /// Show the banner only on the first run
         #[arg(long)]
         one_time_banner: bool,
+
+        /// Show what would be done without executing anything
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// Analyze a JAR or project and report size breakdown

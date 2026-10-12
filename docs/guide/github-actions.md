@@ -2,9 +2,7 @@
 
 Build self-contained JVM binaries in your CI/CD pipeline.
 
-## Quick Start (Copy & Paste)
-
-Copy this workflow to `.github/workflows/build.yml`:
+## Quick Start
 
 ```yaml
 name: Build Binary
@@ -12,141 +10,122 @@ name: Build Binary
 on:
   push:
     branches: [main]
-  pull_request:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
-
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
 
-      - name: Cache jbundle
-        uses: actions/cache@v4
+      - uses: avelino/jbundle@main
         with:
-          path: ~/.jbundle/cache
-          key: jbundle-linux-x64
+          input: .
+          output: ./dist/myapp
 
-      - name: Install jbundle
-        uses: baptiste0928/cargo-install@v3
-        with:
-          crate: jbundle
-          git: https://github.com/avelino/jbundle
-          branch: main
-
-      - name: Build binary
-        run: jbundle build --input . --output ./dist/myapp
-
-      - name: Test binary
-        run: ./dist/myapp --help
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: myapp-linux-x64
           path: ./dist/myapp
 ```
 
-**What to change:**
+That's it. Replace `myapp` with your app name.
 
-- `myapp` → your application name
-- `java-version: 21` → your Java version
+## Action Reference
 
----
+### Inputs
 
-## Installation
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `version` | no | `latest` | jbundle version to install (e.g., `v0.2.0`) |
+| `input` | no | — | Path to project directory or JAR file |
+| `output` | no | — | Output binary path |
+| `java-version` | no | — | JDK version to bundle (11, 17, 21, etc.) |
+| `target` | no | — | Target platform (`linux-x64`, `macos-aarch64`, etc.) |
+| `profile` | no | — | JVM profile (`cli` or `server`) |
+| `shrink` | no | — | Shrink uberjar (`true` to enable) |
+| `args` | no | — | Additional arguments passed to `jbundle build` |
+| `install-only` | no | `false` | Only install jbundle, don't run build |
 
-Install jbundle from source using `cargo-install`:
+### Outputs
+
+| Output | Description |
+|--------|-------------|
+| `binary` | Path to the output binary |
+| `version` | Installed jbundle version |
+
+## Examples
+
+### CLI Tool with Fast Startup
 
 ```yaml
-- name: Install jbundle
-  uses: baptiste0928/cargo-install@v3
+- uses: avelino/jbundle@main
   with:
-    crate: jbundle
-    git: https://github.com/avelino/jbundle/
-    branch: main
+    input: .
+    output: ./dist/mycli
+    profile: cli
+    shrink: true
 ```
 
-> **Note:** jbundle will be published to crates.io soon, simplifying installation to just `crate: jbundle`.
-
-## Basic Usage
+### Specific Java Version
 
 ```yaml
-- name: Build binary
-  run: jbundle build --input . --output ./dist/app
+- uses: avelino/jbundle@main
+  with:
+    input: .
+    output: ./dist/myapp
+    java-version: 17
 ```
 
-## Complete Workflow Example
+### From Pre-built JAR
 
 ```yaml
-name: Build Binaries
+- name: Build JAR
+  run: ./gradlew shadowJar
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-
-jobs:
-  build:
-    runs-on: ubuntu-22.04
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-
-      - name: Install jbundle
-        uses: baptiste0928/cargo-install@v3
-        with:
-          crate: jbundle
-          git: https://github.com/avelino/jbundle/
-          branch: main
-
-      - name: Build binary
-        run: jbundle build --input . --output ./dist/myapp
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: myapp-linux-x64
-          path: ./dist/myapp
+- uses: avelino/jbundle@main
+  with:
+    input: ./build/libs/app-all.jar
+    output: ./dist/myapp
 ```
 
-## Gradle Multi-Project
-
-For projects with multiple subprojects (like JabRef):
+### Install Only (Custom Build Commands)
 
 ```yaml
-- name: Build with Gradle first
-  run: ./gradlew :jabgui:jlinkZip
+- uses: avelino/jbundle@main
+  with:
+    install-only: true
 
-- name: Build binary with jbundle
+- name: Build with custom flags
   run: |
-    mkdir -p build/jbundle
     jbundle build \
       --input . \
-      --gradle-project jabgui \
-      --jlink-runtime jabgui/build/packages \
-      --output ./build/jbundle/jabgui
+      --output ./dist/myapp \
+      --modules java.base,java.sql,java.desktop \
+      --jvm-args "-Xmx1g"
+```
 
-- name: Smoke test
-  run: build/jbundle/jabgui --help
+### Extra Arguments
 
-- name: Upload artifact
-  uses: actions/upload-artifact@v4
+```yaml
+- uses: avelino/jbundle@main
   with:
-    name: jbundle-${{ matrix.displayName }}
-    path: build/jbundle/jabgui*
+    input: .
+    output: ./dist/myapp
+    args: "--gradle-project app --build-args '-PeaJdkBuild=false'"
+```
+
+### Pin to a Specific Version
+
+```yaml
+- uses: avelino/jbundle@v0.2.0
+  with:
+    input: .
+    output: ./dist/myapp
 ```
 
 ## Cross-Platform Builds
@@ -159,10 +138,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-latest
             target: linux-x64
-          - os: ubuntu-22.04
-            target: linux-aarch64
           - os: macos-14
             target: macos-aarch64
           - os: macos-13
@@ -173,42 +150,95 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
 
-      - name: Install jbundle
-        uses: baptiste0928/cargo-install@v3
+      - uses: avelino/jbundle@main
         with:
-          crate: jbundle
-          git: https://github.com/avelino/jbundle/
-          branch: main
+          input: .
+          output: ./dist/myapp-${{ matrix.target }}
+          target: ${{ matrix.target }}
 
-      - name: Build binary
-        run: |
-          jbundle build \
-            --input . \
-            --output ./dist/myapp-${{ matrix.target }} \
-            --target ${{ matrix.target }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: myapp-${{ matrix.target }}
           path: ./dist/myapp-${{ matrix.target }}
 ```
 
-> **Note:** Cross-compilation (e.g., building `linux-aarch64` on `ubuntu-22.04`) works for the jlink runtime but requires the target JDK to be available.
+## Windows CI
+
+jbundle works on `windows-latest` runners. Build binaries for all platforms from Windows:
+
+```yaml
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: macos-14
+            target: macos-aarch64
+          - os: windows-latest
+            target: linux-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: avelino/jbundle@main
+        with:
+          input: .
+          output: ./dist/myapp-${{ matrix.target }}
+          target: ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: myapp-${{ matrix.os }}-${{ matrix.target }}
+          path: ./dist/myapp-${{ matrix.target }}
+```
+
+> **Note:** The output binary uses a Unix shell stub, so `--target` must be a Linux or macOS platform. Windows is supported as a build host, not an output target.
+
+## Gradle Multi-Project
+
+For projects with multiple subprojects (like JabRef):
+
+```yaml
+- uses: avelino/jbundle@main
+  with:
+    input: .
+    output: ./dist/myapp
+    args: "--gradle-project app"
+```
+
+Or with a pre-built jlink runtime:
+
+```yaml
+- name: Build with Gradle
+  run: ./gradlew :jabgui:jlinkZip
+
+- uses: avelino/jbundle@main
+  with:
+    input: .
+    output: ./dist/jabgui
+    args: "--gradle-project jabgui --jlink-runtime jabgui/build/packages"
+```
 
 ## Caching
 
-Speed up builds by caching the jbundle cache directory:
+Speed up builds by caching the jbundle JDK cache:
 
 ```yaml
-- name: Cache jbundle
-  uses: actions/cache@v4
+- uses: actions/cache@v4
   with:
     path: ~/.jbundle/cache
     key: jbundle-${{ runner.os }}-${{ hashFiles('**/jbundle.toml') }}
@@ -216,11 +246,26 @@ Speed up builds by caching the jbundle cache directory:
       jbundle-${{ runner.os }}-
 ```
 
-This caches downloaded JDKs and extracted runtimes.
+## Reusing the CI JDK
+
+`setup-java` sets `JAVA_HOME` automatically. jbundle detects it and skips the Adoptium download:
+
+```yaml
+- uses: actions/setup-java@v4
+  with:
+    distribution: temurin
+    java-version: 21
+
+# jbundle reuses JAVA_HOME — no extra download
+- uses: avelino/jbundle@main
+  with:
+    input: .
+    output: ./dist/myapp
+```
 
 ## Using jbundle.toml
 
-Instead of passing flags, use a config file:
+Instead of passing inputs, use a config file in your repo:
 
 ```toml
 # jbundle.toml
@@ -232,19 +277,10 @@ jvm_args = ["-Xmx512m"]
 Then your workflow simplifies to:
 
 ```yaml
-- name: Build binary
-  run: jbundle build --input . --output ./dist/myapp
-```
-
-## Environment Variables
-
-Enable debug logging for troubleshooting:
-
-```yaml
-- name: Build binary (debug)
-  run: jbundle build --input . --output ./dist/myapp
-  env:
-    RUST_LOG: debug
+- uses: avelino/jbundle@main
+  with:
+    input: .
+    output: ./dist/myapp
 ```
 
 ## Release Workflow
@@ -256,15 +292,14 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ["v*"]
 
 jobs:
   build:
     strategy:
       matrix:
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-latest
             target: linux-x64
           - os: macos-14
             target: macos-aarch64
@@ -274,41 +309,54 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
 
-      - name: Install jbundle
-        uses: baptiste0928/cargo-install@v3
+      - uses: avelino/jbundle@main
         with:
-          crate: jbundle
-          git: https://github.com/avelino/jbundle/
-          branch: main
+          input: .
+          output: ./myapp-${{ matrix.target }}
+          target: ${{ matrix.target }}
 
-      - name: Build binary
-        run: |
-          jbundle build \
-            --input . \
-            --output ./myapp-${{ matrix.target }} \
-            --target ${{ matrix.target }}
-
-      - name: Upload to release
-        uses: softprops/action-gh-release@v1
+      - uses: softprops/action-gh-release@v1
         with:
           files: ./myapp-${{ matrix.target }}
+```
+
+## Debug
+
+Enable verbose logging:
+
+```yaml
+- uses: avelino/jbundle@main
+  with:
+    input: .
+    output: ./dist/myapp
+    args: "--verbose"
+  env:
+    RUST_LOG: debug
+```
+
+Or use dry-run to preview the build plan:
+
+```yaml
+- uses: avelino/jbundle@main
+  with:
+    input: .
+    output: ./dist/myapp
+    args: "--dry-run"
 ```
 
 ## Troubleshooting
 
 ### Build hangs at "Detecting build system"
 
-This usually means Gradle is downloading dependencies. Add Gradle caching:
+Gradle downloading dependencies. Add caching:
 
 ```yaml
-- name: Cache Gradle
-  uses: actions/cache@v4
+- uses: actions/cache@v4
   with:
     path: |
       ~/.gradle/caches
@@ -318,16 +366,10 @@ This usually means Gradle is downloading dependencies. Add Gradle caching:
 
 ### Out of memory
 
-Increase JVM memory in your config:
-
-```toml
-# jbundle.toml
-jvm_args = ["-Xmx2g"]
-```
-
-Or via CLI:
-
 ```yaml
-- name: Build binary
-  run: jbundle build --input . --output ./dist/myapp --jvm-args "-Xmx2g"
+- uses: avelino/jbundle@main
+  with:
+    input: .
+    output: ./dist/myapp
+    args: "--jvm-args '-Xmx2g'"
 ```

@@ -15,6 +15,7 @@
 * [Build Systems](guide/build-systems.md)
 * [Gradle Multi-Project](guide/gradle-multi-project.md)
 * [GitHub Actions](guide/github-actions.md)
+* [Dry-Run Mode](guide/dry-run.md)
 * [Error Diagnostics](guide/diagnostics.md)
 * [JAR Analysis](guide/analyze.md)
 

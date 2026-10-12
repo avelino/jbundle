@@ -1,8 +1,80 @@
 # Installation
 
+## Install Script (Recommended)
+
+### macOS / Linux
+
+```bash
+curl -sSL https://raw.githubusercontent.com/avelino/jbundle/main/install.sh | sh
+```
+
+### Windows (PowerShell)
+
+> **Help wanted:** Windows support is best-effort. Contributions welcome — see [open issues](https://github.com/avelino/jbundle/issues).
+
+```powershell
+irm https://raw.githubusercontent.com/avelino/jbundle/main/install.ps1 | iex
+```
+
+Installs to `%USERPROFILE%\.jbundle\bin` and adds it to your PATH.
+
+### Custom Install Directory
+
+```bash
+# macOS / Linux
+JBUNDLE_INSTALL_DIR=~/.local/bin curl -sSL https://raw.githubusercontent.com/avelino/jbundle/main/install.sh | sh
+
+# Windows
+$env:JBUNDLE_INSTALL_DIR = "C:\tools" ; irm https://raw.githubusercontent.com/avelino/jbundle/main/install.ps1 | iex
+```
+
+### Install a Specific Version
+
+```bash
+# macOS / Linux
+JBUNDLE_VERSION=v0.2.0 curl -sSL https://raw.githubusercontent.com/avelino/jbundle/main/install.sh | sh
+
+# Windows
+$env:JBUNDLE_VERSION = "v0.2.0" ; irm https://raw.githubusercontent.com/avelino/jbundle/main/install.ps1 | iex
+```
+
+## Homebrew
+
+```bash
+brew tap avelino/jbundle
+brew install jbundle
+```
+
+Works on macOS (Intel and Apple Silicon) and Linux via Linuxbrew.
+
+## Pre-compiled Binaries
+
+Download from [GitHub Releases](https://github.com/avelino/jbundle/releases):
+
+| Platform | Binary |
+|----------|--------|
+| Linux x86_64 | `jbundle-linux-x86_64.tar.gz` |
+| Linux ARM64 | `jbundle-linux-aarch64.tar.gz` |
+| macOS x86_64 | `jbundle-darwin-x86_64.tar.gz` |
+| macOS ARM64 | `jbundle-darwin-aarch64.tar.gz` |
+| Windows x86_64 | `jbundle-windows-x86_64.zip` |
+
+```bash
+# Example: manual install on Linux x86_64
+curl -sSL https://github.com/avelino/jbundle/releases/latest/download/jbundle-linux-x86_64.tar.gz | tar xz
+sudo mv jbundle /usr/local/bin/
+```
+
+```powershell
+# Example: manual install on Windows
+Invoke-WebRequest https://github.com/avelino/jbundle/releases/latest/download/jbundle-windows-x86_64.zip -OutFile jbundle.zip
+Expand-Archive jbundle.zip -DestinationPath .
+Move-Item jbundle.exe C:\Windows\
+```
+
 ## From Source
 
-Currently, jbundle is installed from source using Cargo (Rust's package manager).
+Build from source using Cargo (Rust's package manager).
 
 ### Prerequisites
 
@@ -14,27 +86,16 @@ Currently, jbundle is installed from source using Cargo (Rust's package manager)
 ### Steps
 
 ```bash
-# Clone the repository
 git clone https://github.com/avelino/jbundle.git
 cd jbundle
-
-# Install globally
 cargo install --path .
 ```
 
-After installation, `jbundle` will be available in your PATH.
-
-### Verify Installation
+## Verify Installation
 
 ```bash
 jbundle --version
 ```
-
-## Coming Soon
-
-* Homebrew formula (`brew install jbundle`)
-* Pre-built binaries for Linux and macOS
-* Cargo crates.io (`cargo install jbundle`)
 
 ## Requirements
 

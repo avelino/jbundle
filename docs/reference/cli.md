@@ -25,6 +25,7 @@ jbundle build [OPTIONS] --input <PATH> --output <PATH>
 | `--target <TARGET>` | current | Target platform (see [Platforms](platforms.md)) |
 | `--profile <PROFILE>` | `server` | JVM profile (`cli` or `server`) |
 | `--jvm-args <ARGS>` | — | JVM arguments (e.g., `-Xmx512m`) |
+| `--build-args <ARGS>` | — | Extra arguments passed to the build tool (e.g., Gradle `-P` flags) |
 | `--shrink [true\|false]` | `false` | Shrink uberjar by removing non-essential files |
 | `--no-appcds` | — | Disable AppCDS generation |
 | `--crac` | — | Enable CRaC checkpoint (Linux only) |
@@ -33,7 +34,9 @@ jbundle build [OPTIONS] --input <PATH> --output <PATH>
 | `--gradle-project <NAME>` | — | Gradle subproject to build (multi-project) |
 | `--all` | — | Build all application subprojects (Gradle) |
 | `--modules <LIST>` | — | Manual module list, comma-separated |
+| `--java-home <PATH>` | — | Path to existing JDK installation (skips JDK download). Falls back to `JAVA_HOME` env var. |
 | `--jlink-runtime <PATH>` | — | Path to existing jlink runtime to reuse (must contain `bin/java`) |
+| `--dry-run` | — | Show build plan without executing anything |
 | `-v, --verbose` | — | Enable verbose output |
 
 ### Examples
@@ -75,8 +78,20 @@ jbundle build --input . --output ./dist --all
 # Manual module specification
 jbundle build --input . --output ./app --modules java.base,java.sql,java.logging
 
+# Use existing JDK (skip download)
+jbundle build --input . --output ./app --java-home /usr/lib/jvm/java-21
+
 # Reuse existing jlink runtime
 jbundle build --input . --output ./app --jlink-runtime ./build/jlink
+
+# Pass extra arguments to Gradle
+jbundle build --input . --output ./app --build-args "-PeaJdkBuild=false" --build-args "-PprojVersion=xyz"
+
+# Preview build plan without executing
+jbundle build --input . --output ./app --dry-run
+
+# Dry-run with specific target to verify cross-compilation setup
+jbundle build --input . --output ./app --target linux-x64 --dry-run
 ```
 
 ## jbundle analyze
@@ -171,6 +186,7 @@ jbundle build --help
 
 | Variable | Description |
 |----------|-------------|
+| `JAVA_HOME` | Path to existing JDK installation (used when `--java-home` is not specified) |
 | `RUST_LOG` | Logging level (`error`, `warn`, `info`, `debug`, `trace`) |
 
 ### Logging Examples

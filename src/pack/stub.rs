@@ -51,17 +51,7 @@ pub fn generate(params: &StubParams) -> String {
 BANNER"#
     };
 
-    let banner_display = if params.one_time_banner {
-        format!(
-            r#"mkdir -p "$JBUNDLE_RUNS"
-if [ ! -e "$JBUNDLE_RUNS/$APP_HASH" ]; then
-    touch "$JBUNDLE_RUNS/$APP_HASH"
-    {jbundle_banner}
-fi"#
-        )
-    } else {
-        jbundle_banner.to_string()
-    };
+    let banner_display = one_time_banner_block(jbundle_banner, params.one_time_banner);
 
     // AppCDS via AutoCreateSharedArchive (JDK 19+)
     let cds_flags = if params.appcds && params.java_version >= 19 {
@@ -77,7 +67,6 @@ CDS_FLAG="-XX:+AutoCreateSharedArchive -XX:SharedArchiveFile=$CDS_FILE""#
         r#"#!/bin/sh
 set -e
 CACHE="${{HOME}}/.jbundle/cache"
-JBUNDLE_RUNS="${{HOME}}/.jbundle/runs"
 RT_HASH="{runtime_hash}"    RT_SIZE={runtime_size}
 APP_HASH="{app_hash}"   APP_SIZE={app_size}
 CRAC_SIZE={crac_size}       CRAC_HASH="{crac_hash_val}"
@@ -118,6 +107,22 @@ exec "$RT_DIR/bin/java"{profile_and_args} $CDS_FLAG -jar "$APP_DIR/app.jar" "$@"
 exit 0
 # --- PAYLOAD BELOW ---
 "#
+    )
+}
+
+/// Wrap the banner so it only shows on the first run of this app. The marker
+/// lives in `~/.jbundle/runs/<app hash>`. If it can't be written (read-only
+/// HOME, sandbox) the banner is shown and the app still starts.
+fn one_time_banner_block(banner: &str, one_time: bool) -> String {
+    if !one_time {
+        return banner.to_string();
+    }
+    format!(
+        r#"JBUNDLE_RUNS="${{HOME}}/.jbundle/runs"
+if [ ! -e "$JBUNDLE_RUNS/$APP_HASH" ]; then
+    {{ mkdir -p "$JBUNDLE_RUNS" && : > "$JBUNDLE_RUNS/$APP_HASH"; }} 2>/dev/null || true
+{banner}
+fi"#
     )
 }
 
@@ -324,5 +329,58 @@ mod tests {
         let finalized = finalize_stub(&stub);
         assert!(!finalized.contains("__STUB_SIZE__"));
         assert!(finalized.contains("STUB_SIZE="));
+    }
+
+    #[cfg(unix)]
+    fn run_banner(home: &std::path::Path) -> std::process::Output {
+        let script = format!(
+            "set -e\nAPP_HASH=app1\n{}\necho started\n",
+            one_time_banner_block(
+                r#"echo "binary created with jbundle.avelino.run" >&2"#,
+                true
+            )
+        );
+        std::process::Command::new("sh")
+            .arg("-c")
+            .arg(script)
+            .env("HOME", home)
+            .output()
+            .unwrap()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn one_time_banner_shows_only_on_first_run() {
+        let home = tempfile::tempdir().unwrap();
+        let first = run_banner(home.path());
+        assert!(first.status.success());
+        assert!(String::from_utf8_lossy(&first.stderr).contains("jbundle.avelino.run"));
+        let second = run_banner(home.path());
+        assert!(second.status.success());
+        assert!(second.stderr.is_empty());
+        assert_eq!(String::from_utf8_lossy(&second.stdout).trim(), "started");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn one_time_banner_never_blocks_start_on_read_only_home() {
+        // HOME points at a file, so nothing under it can be created.
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("not-a-dir");
+        std::fs::write(&home, b"").unwrap();
+        let out = run_banner(&home);
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(String::from_utf8_lossy(&out.stderr).contains("jbundle.avelino.run"));
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "started");
+    }
+
+    #[test]
+    fn stub_without_one_time_banner_has_no_marker() {
+        let stub = generate(&params_default());
+        assert!(!stub.contains(".jbundle/runs"));
     }
 }

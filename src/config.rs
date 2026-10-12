@@ -95,6 +95,7 @@ pub enum BuildSystem {
 pub enum TargetOs {
     Linux,
     MacOs,
+    Windows,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -110,9 +111,17 @@ pub struct Target {
 }
 
 impl Target {
+    /// Returns true if this target differs from the current host platform.
+    pub fn is_cross_compile(&self) -> bool {
+        let host = Self::current();
+        self.os != host.os || self.arch != host.arch
+    }
+
     pub fn current() -> Self {
         let os = if cfg!(target_os = "macos") {
             TargetOs::MacOs
+        } else if cfg!(target_os = "windows") {
+            TargetOs::Windows
         } else {
             TargetOs::Linux
         };
@@ -142,6 +151,10 @@ impl Target {
                 os: TargetOs::MacOs,
                 arch: TargetArch::Aarch64,
             }),
+            "windows-x64" => Some(Self {
+                os: TargetOs::Windows,
+                arch: TargetArch::X86_64,
+            }),
             _ => None,
         }
     }
@@ -150,6 +163,7 @@ impl Target {
         match self.os {
             TargetOs::Linux => "linux",
             TargetOs::MacOs => "mac",
+            TargetOs::Windows => "windows",
         }
     }
 
@@ -177,12 +191,18 @@ pub struct BuildConfig {
     pub one_time_banner: bool,
     /// Gradle subproject to build (for multi-project builds)
     pub gradle_project: Option<String>,
+    /// Extra arguments passed to the build tool
+    pub build_args: Vec<String>,
     /// Build all application subprojects (Gradle multi-project)
     pub build_all: bool,
     /// Manual module override (bypasses jdeps detection)
     pub modules_override: Option<Vec<String>>,
+    /// Path to existing JDK installation (skips download)
+    pub java_home: Option<PathBuf>,
     /// Path to existing jlink runtime to reuse
     pub jlink_runtime: Option<PathBuf>,
+    /// Show build plan without executing
+    pub dry_run: bool,
 }
 
 impl BuildConfig {
@@ -221,8 +241,15 @@ mod tests {
     }
 
     #[test]
+    fn target_from_str_windows() {
+        let t = Target::from_str("windows-x64").unwrap();
+        assert_eq!(t.os, TargetOs::Windows);
+        assert_eq!(t.arch, TargetArch::X86_64);
+    }
+
+    #[test]
     fn target_from_str_invalid() {
-        assert!(Target::from_str("windows-x64").is_none());
+        assert!(Target::from_str("windows-aarch64").is_none());
         assert!(Target::from_str("").is_none());
         assert!(Target::from_str("linux").is_none());
     }
@@ -240,6 +267,12 @@ mod tests {
             arch: TargetArch::X86_64,
         };
         assert_eq!(macos.adoptium_os(), "mac");
+
+        let windows = Target {
+            os: TargetOs::Windows,
+            arch: TargetArch::X86_64,
+        };
+        assert_eq!(windows.adoptium_os(), "windows");
     }
 
     #[test]
@@ -332,5 +365,39 @@ mod tests {
     fn jvm_profile_gc_flag() {
         assert_eq!(JvmProfile::Cli.gc_flag(), Some("-XX:+UseSerialGC"));
         assert_eq!(JvmProfile::Server.gc_flag(), None);
+    }
+
+    #[test]
+    fn is_cross_compile_same_platform() {
+        let current = Target::current();
+        assert!(!current.is_cross_compile());
+    }
+
+    #[test]
+    fn is_cross_compile_different_os() {
+        let current = Target::current();
+        let cross = Target {
+            os: if current.os == TargetOs::Linux {
+                TargetOs::MacOs
+            } else {
+                TargetOs::Linux
+            },
+            arch: current.arch,
+        };
+        assert!(cross.is_cross_compile());
+    }
+
+    #[test]
+    fn is_cross_compile_different_arch() {
+        let current = Target::current();
+        let cross = Target {
+            os: current.os,
+            arch: if current.arch == TargetArch::X86_64 {
+                TargetArch::Aarch64
+            } else {
+                TargetArch::X86_64
+            },
+        };
+        assert!(cross.is_cross_compile());
     }
 }
