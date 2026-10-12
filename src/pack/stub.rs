@@ -100,7 +100,7 @@ RT_DIR="$CACHE/rt-$RT_HASH"
 if [ ! -f "$RT_DIR/.jbundle-complete" ]; then
     echo "Extracting runtime (first run)..." >&2
     RT_TMP=$(mktemp -d "$CACHE/.rt-$RT_HASH.XXXXXX")
-    tail -c +$((STUB_SIZE + 1)) "$0" | head -c "$RT_SIZE" | tar xzf - -C "$RT_TMP"
+    tail -c +$((STUB_SIZE + 1)) "$0" | head -c "$RT_SIZE" | tar xzf - -C "$RT_TMP" || {{ rm -rf "$RT_TMP"; exit 1; }}
     : > "$RT_TMP/.jbundle-complete"
     jb_install_dir "$RT_TMP" "$RT_DIR"
 fi
@@ -111,7 +111,7 @@ APP_DIR="$CACHE/app-$APP_HASH"
 if [ ! -f "$APP_DIR/.jbundle-complete" ]; then
     mkdir -p "$APP_DIR"
     APP_TMP=$(mktemp "$APP_DIR/.app.jar.XXXXXX")
-    tail -c +$((STUB_SIZE + RT_SIZE + 1)) "$0" | head -c "$APP_SIZE" | gzip -d > "$APP_TMP"
+    tail -c +$((STUB_SIZE + RT_SIZE + 1)) "$0" | head -c "$APP_SIZE" | gzip -d > "$APP_TMP" || {{ rm -f "$APP_TMP"; exit 1; }}
     mv -f "$APP_TMP" "$APP_DIR/app.jar"
     : > "$APP_DIR/.jbundle-complete"
 fi
@@ -122,7 +122,7 @@ if [ "$CRAC_SIZE" -gt 0 ] 2>/dev/null && [ "$(uname)" = "Linux" ]; then
     CRAC_DIR="$CACHE/crac-$CRAC_HASH"
     if [ ! -f "$CRAC_DIR/.jbundle-complete" ]; then
         CRAC_TMP=$(mktemp -d "$CACHE/.crac-$CRAC_HASH.XXXXXX")
-        tail -c +$((STUB_SIZE + RT_SIZE + APP_SIZE + 1)) "$0" | head -c "$CRAC_SIZE" | tar xzf - -C "$CRAC_TMP"
+        tail -c +$((STUB_SIZE + RT_SIZE + APP_SIZE + 1)) "$0" | head -c "$CRAC_SIZE" | tar xzf - -C "$CRAC_TMP" || {{ rm -rf "$CRAC_TMP"; exit 1; }}
         : > "$CRAC_TMP/.jbundle-complete"
         jb_install_dir "$CRAC_TMP" "$CRAC_DIR"
     fi
@@ -473,5 +473,42 @@ mod tests {
         assert!(rt.join("lib/zz-last").is_file());
         assert!(rt.join(".jbundle-complete").is_file());
         assert!(app.join(".jbundle-complete").is_file());
+    }
+
+    /// A payload that fails to extract must not leave temp entries behind
+    /// in the cache, and must not mark anything complete.
+    #[cfg(unix)]
+    #[test]
+    fn failed_extraction_cleans_up_temp_entries() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+
+        let work = tempfile::tempdir().unwrap();
+        let stub = finalize_stub(&generate(&StubParams {
+            runtime_size: 64,
+            app_size: 0,
+            appcds: false,
+            ..params_default()
+        }));
+        let bin = work.path().join("broken");
+        let mut out = std::fs::File::create(&bin).unwrap();
+        out.write_all(stub.as_bytes()).unwrap();
+        out.write_all(&[0u8; 64]).unwrap(); // not a tar.gz
+        drop(out);
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let home = work.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        let o = std::process::Command::new(&bin)
+            .env("HOME", &home)
+            .output()
+            .unwrap();
+        assert!(!o.status.success());
+        let cache = home.join(".jbundle/cache");
+        let left: Vec<_> = std::fs::read_dir(&cache)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert!(left.is_empty(), "left in cache after failure: {left:?}");
     }
 }
