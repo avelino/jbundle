@@ -77,40 +77,53 @@ STUB_SIZE=__STUB_SIZE__
 # time never sees a half-written runtime or app.jar.
 mkdir -p "$CACHE"
 
-# Move a freshly extracted temp dir into place. If another copy won the race,
-# `mv` drops ours inside the existing dir, so clean up both spots.
+# A cache entry is only trusted once it carries the .jbundle-complete marker,
+# which is written inside the temp dir after extraction succeeds. Entries
+# without it (killed mid-extraction, or left by an older stub that extracted
+# in place) get rebuilt once.
+#
+# Move a freshly extracted temp dir into place. If another copy already
+# installed a complete entry, drop ours. A markerless leftover is moved aside
+# first so the rename lands on a free path.
 jb_install_dir() {{
+    if [ ! -f "$2/.jbundle-complete" ] && [ -e "$2" ]; then
+        JB_STALE=$(mktemp -d "$2.stale.XXXXXX")
+        mv "$2" "$JB_STALE/" 2>/dev/null || true
+        rm -rf "$JB_STALE"
+    fi
     mv "$1" "$2" 2>/dev/null || true
     rm -rf "$2/${{1##*/}}" "$1"
 }}
 
 # Extract runtime (only if not cached)
 RT_DIR="$CACHE/rt-$RT_HASH"
-if [ ! -x "$RT_DIR/bin/java" ]; then
+if [ ! -f "$RT_DIR/.jbundle-complete" ]; then
     echo "Extracting runtime (first run)..." >&2
-    [ -d "$RT_DIR" ] && [ ! -d "$RT_DIR/bin" ] && rm -rf "$RT_DIR"
     RT_TMP=$(mktemp -d "$CACHE/.rt-$RT_HASH.XXXXXX")
     tail -c +$((STUB_SIZE + 1)) "$0" | head -c "$RT_SIZE" | tar xzf - -C "$RT_TMP"
+    : > "$RT_TMP/.jbundle-complete"
     jb_install_dir "$RT_TMP" "$RT_DIR"
 fi
 
-# Extract app.jar (decompress gzip, only if not cached)
+# Extract app.jar (decompress gzip, only if not cached). The rename is atomic
+# and the marker is written after it, so a jar without marker is redone.
 APP_DIR="$CACHE/app-$APP_HASH"
-if [ ! -f "$APP_DIR/app.jar" ]; then
+if [ ! -f "$APP_DIR/.jbundle-complete" ]; then
     mkdir -p "$APP_DIR"
     APP_TMP=$(mktemp "$APP_DIR/.app.jar.XXXXXX")
     tail -c +$((STUB_SIZE + RT_SIZE + 1)) "$0" | head -c "$APP_SIZE" | gzip -d > "$APP_TMP"
     mv -f "$APP_TMP" "$APP_DIR/app.jar"
+    : > "$APP_DIR/.jbundle-complete"
 fi
 {cds_flags}
 
 # CRaC restore (Linux only)
 if [ "$CRAC_SIZE" -gt 0 ] 2>/dev/null && [ "$(uname)" = "Linux" ]; then
     CRAC_DIR="$CACHE/crac-$CRAC_HASH"
-    if [ ! -d "$CRAC_DIR/cr" ]; then
-        [ -d "$CRAC_DIR" ] && rm -rf "$CRAC_DIR"
+    if [ ! -f "$CRAC_DIR/.jbundle-complete" ]; then
         CRAC_TMP=$(mktemp -d "$CACHE/.crac-$CRAC_HASH.XXXXXX")
         tail -c +$((STUB_SIZE + RT_SIZE + APP_SIZE + 1)) "$0" | head -c "$CRAC_SIZE" | tar xzf - -C "$CRAC_TMP"
+        : > "$CRAC_TMP/.jbundle-complete"
         jb_install_dir "$CRAC_TMP" "$CRAC_DIR"
     fi
     "$RT_DIR/bin/java" -XX:CRaCRestoreFrom="$CRAC_DIR/cr" "$@" && exit 0
@@ -334,6 +347,8 @@ mod tests {
         assert!(stub.contains("mktemp -d \"$CACHE/.rt-$RT_HASH.XXXXXX\""));
         assert!(stub.contains("mv -f \"$APP_TMP\" \"$APP_DIR/app.jar\""));
         assert!(!stub.contains("tar xzf - -C \"$RT_DIR\""));
+        assert!(stub.contains(r#"[ ! -f "$RT_DIR/.jbundle-complete" ]"#));
+        assert!(stub.contains(r#": > "$RT_TMP/.jbundle-complete""#));
     }
 
     /// Start several copies of a packed binary at the same time on an empty
@@ -430,12 +445,33 @@ mod tests {
             let nested: Vec<_> = std::fs::read_dir(cache.join("rt-rt1"))
                 .unwrap()
                 .map(|e| e.unwrap().file_name().into_string().unwrap())
-                .filter(|n| n.starts_with('.'))
+                .filter(|n| n.starts_with('.') && n != ".jbundle-complete")
                 .collect();
             assert!(
                 nested.is_empty(),
                 "loser temp dir nested in runtime: {nested:?}"
             );
         }
+
+        // A cache left half-written (by a killed run or an older stub that
+        // extracted in place) has bin/java but no lib/ and no marker. It must
+        // be rebuilt, not trusted.
+        let home = work.path().join("home-legacy");
+        let rt = home.join(".jbundle/cache/rt-rt1");
+        std::fs::create_dir_all(rt.join("bin")).unwrap();
+        std::fs::copy(&java, rt.join("bin/java")).unwrap();
+        let app = home.join(".jbundle/cache/app-app1");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(app.join("app.jar"), b"app-").unwrap();
+        let o = Command::new(&bin).env("HOME", &home).output().unwrap();
+        assert!(
+            o.status.success(),
+            "legacy cache not rebuilt: {}\n{}",
+            String::from_utf8_lossy(&o.stdout),
+            String::from_utf8_lossy(&o.stderr)
+        );
+        assert!(rt.join("lib/zz-last").is_file());
+        assert!(rt.join(".jbundle-complete").is_file());
+        assert!(app.join(".jbundle-complete").is_file());
     }
 }
