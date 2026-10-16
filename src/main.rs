@@ -94,6 +94,9 @@ async fn main() -> Result<()> {
                     None => Target::current(),
                 },
             };
+            target
+                .ensure_supported_output()
+                .map_err(|e| anyhow::anyhow!(e))?;
 
             let java_version_explicit = java_version.is_some()
                 || project_config

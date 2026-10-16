@@ -76,28 +76,59 @@ CRAC_SIZE={crac_size}       CRAC_HASH="{crac_hash_val}"
 
 STUB_SIZE=__STUB_SIZE__
 
+# Every cache entry is extracted into a private temp dir next to its final
+# location and then renamed into place, so a second copy started at the same
+# time never sees a half-written runtime or app.jar.
+mkdir -p "$CACHE"
+
+# A cache entry is only trusted once it carries the .jbundle-complete marker,
+# which is written inside the temp dir after extraction succeeds. Entries
+# without it (killed mid-extraction, or left by an older stub that extracted
+# in place) get rebuilt once.
+#
+# Move a freshly extracted temp dir into place. If another copy already
+# installed a complete entry, drop ours. A markerless leftover is moved aside
+# first so the rename lands on a free path.
+jb_install_dir() {{
+    if [ ! -f "$2/.jbundle-complete" ] && [ -e "$2" ]; then
+        JB_STALE=$(mktemp -d "$2.stale.XXXXXX")
+        mv "$2" "$JB_STALE/" 2>/dev/null || true
+        rm -rf "$JB_STALE"
+    fi
+    mv "$1" "$2" 2>/dev/null || true
+    rm -rf "$2/${{1##*/}}" "$1"
+}}
+
 # Extract runtime (only if not cached)
 RT_DIR="$CACHE/rt-$RT_HASH"
-if [ ! -d "$RT_DIR/bin" ]; then
-    mkdir -p "$RT_DIR"
+if [ ! -f "$RT_DIR/.jbundle-complete" ]; then
     echo "Extracting runtime (first run)..." >&2
-    tail -c +$((STUB_SIZE + 1)) "$0" | head -c "$RT_SIZE" | tar xzf - -C "$RT_DIR"
+    RT_TMP=$(mktemp -d "$CACHE/.rt-$RT_HASH.XXXXXX")
+    tail -c +$((STUB_SIZE + 1)) "$0" | head -c "$RT_SIZE" | tar xzf - -C "$RT_TMP" || {{ rm -rf "$RT_TMP"; exit 1; }}
+    : > "$RT_TMP/.jbundle-complete"
+    jb_install_dir "$RT_TMP" "$RT_DIR"
 fi
 
-# Extract app.jar (decompress gzip, only if not cached)
+# Extract app.jar (decompress gzip, only if not cached). The rename is atomic
+# and the marker is written after it, so a jar without marker is redone.
 APP_DIR="$CACHE/app-$APP_HASH"
-if [ ! -f "$APP_DIR/app.jar" ]; then
+if [ ! -f "$APP_DIR/.jbundle-complete" ]; then
     mkdir -p "$APP_DIR"
-    tail -c +$((STUB_SIZE + RT_SIZE + 1)) "$0" | head -c "$APP_SIZE" | gzip -d > "$APP_DIR/app.jar"
+    APP_TMP=$(mktemp "$APP_DIR/.app.jar.XXXXXX")
+    tail -c +$((STUB_SIZE + RT_SIZE + 1)) "$0" | head -c "$APP_SIZE" | gzip -d > "$APP_TMP" || {{ rm -f "$APP_TMP"; exit 1; }}
+    mv -f "$APP_TMP" "$APP_DIR/app.jar"
+    : > "$APP_DIR/.jbundle-complete"
 fi
 {cds_flags}
 
 # CRaC restore (Linux only)
 if [ "$CRAC_SIZE" -gt 0 ] 2>/dev/null && [ "$(uname)" = "Linux" ]; then
     CRAC_DIR="$CACHE/crac-$CRAC_HASH"
-    if [ ! -d "$CRAC_DIR/cr" ]; then
-        mkdir -p "$CRAC_DIR"
-        tail -c +$((STUB_SIZE + RT_SIZE + APP_SIZE + 1)) "$0" | head -c "$CRAC_SIZE" | tar xzf - -C "$CRAC_DIR"
+    if [ ! -f "$CRAC_DIR/.jbundle-complete" ]; then
+        CRAC_TMP=$(mktemp -d "$CACHE/.crac-$CRAC_HASH.XXXXXX")
+        tail -c +$((STUB_SIZE + RT_SIZE + APP_SIZE + 1)) "$0" | head -c "$CRAC_SIZE" | tar xzf - -C "$CRAC_TMP" || {{ rm -rf "$CRAC_TMP"; exit 1; }}
+        : > "$CRAC_TMP/.jbundle-complete"
+        jb_install_dir "$CRAC_TMP" "$CRAC_DIR"
     fi
     "$RT_DIR/bin/java" -XX:CRaCRestoreFrom="$CRAC_DIR/cr" "$@" && exit 0
     echo "warn: CRaC restore failed, falling back to standard startup" >&2
@@ -333,5 +364,176 @@ mod tests {
         });
         assert!(!stub.contains("BANNER"));
         assert!(!stub.contains("jbundle.avelino.run"));
+    }
+
+    #[test]
+    fn stub_extracts_via_temp_dir_and_rename() {
+        let stub = generate(&params_default());
+        assert!(stub.contains("mktemp -d \"$CACHE/.rt-$RT_HASH.XXXXXX\""));
+        assert!(stub.contains("mv -f \"$APP_TMP\" \"$APP_DIR/app.jar\""));
+        assert!(!stub.contains("tar xzf - -C \"$RT_DIR\""));
+        assert!(stub.contains(r#"[ ! -f "$RT_DIR/.jbundle-complete" ]"#));
+        assert!(stub.contains(r#": > "$RT_TMP/.jbundle-complete""#));
+    }
+
+    /// Start several copies of a packed binary at the same time on an empty
+    /// cache. Before extraction went through a temp dir, a second copy could
+    /// see `bin/` while `lib/` was still being written and launch a broken
+    /// runtime. The fake `java` checks that the whole runtime and app.jar are
+    /// in place before it reports success.
+    #[cfg(unix)]
+    #[test]
+    fn concurrent_first_runs_never_see_partial_extraction() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::{Command, Stdio};
+
+        let work = tempfile::tempdir().unwrap();
+
+        // Fake runtime: bin/java plus a lot of lib/ files so extraction takes a while.
+        let rt_src = work.path().join("rt");
+        std::fs::create_dir_all(rt_src.join("bin")).unwrap();
+        std::fs::create_dir_all(rt_src.join("lib")).unwrap();
+        let java = rt_src.join("bin/java");
+        std::fs::write(
+            &java,
+            "#!/bin/sh\nD=$(dirname \"$0\")/..\n\
+             [ -f \"$D/lib/zz-last\" ] || { echo partial-runtime; exit 3; }\n\
+             for a in \"$@\"; do J=$a; done\n\
+             [ \"$(cat \"$J\")\" = app-ok ] || { echo partial-jar; exit 4; }\n\
+             echo ok\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&java, std::fs::Permissions::from_mode(0o755)).unwrap();
+        for i in 0..400 {
+            std::fs::write(rt_src.join(format!("lib/f{i:04}")), vec![b'x'; 4096]).unwrap();
+        }
+        std::fs::write(rt_src.join("lib/zz-last"), b"done").unwrap();
+
+        let rt_tgz = work.path().join("rt.tar.gz");
+        {
+            let f = std::fs::File::create(&rt_tgz).unwrap();
+            let enc = flate2::write::GzEncoder::new(f, flate2::Compression::fast());
+            let mut tar = tar::Builder::new(enc);
+            tar.append_dir_all(".", &rt_src).unwrap();
+            tar.into_inner().unwrap().finish().unwrap();
+        }
+        let mut app_gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        app_gz.write_all(b"app-ok").unwrap();
+        let app_gz = app_gz.finish().unwrap();
+        let rt_bytes = std::fs::read(&rt_tgz).unwrap();
+
+        let stub = finalize_stub(&generate(&StubParams {
+            runtime_size: rt_bytes.len() as u64,
+            app_size: app_gz.len() as u64,
+            appcds: false,
+            ..params_default()
+        }));
+        let bin = work.path().join("app");
+        let mut out = std::fs::File::create(&bin).unwrap();
+        out.write_all(stub.as_bytes()).unwrap();
+        out.write_all(&rt_bytes).unwrap();
+        out.write_all(&app_gz).unwrap();
+        drop(out);
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        for round in 0..5 {
+            let home = work.path().join(format!("home{round}"));
+            std::fs::create_dir_all(&home).unwrap();
+            let children: Vec<_> = (0..4)
+                .map(|_| {
+                    Command::new(&bin)
+                        .env("HOME", &home)
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .spawn()
+                        .unwrap()
+                })
+                .collect();
+            for child in children {
+                let o = child.wait_with_output().unwrap();
+                assert!(
+                    o.status.success(),
+                    "round {round}: {}\n{}",
+                    String::from_utf8_lossy(&o.stdout),
+                    String::from_utf8_lossy(&o.stderr)
+                );
+                assert_eq!(String::from_utf8_lossy(&o.stdout).trim(), "ok");
+            }
+            let cache = home.join(".jbundle/cache");
+            let leftovers: Vec<_> = std::fs::read_dir(&cache)
+                .unwrap()
+                .map(|e| e.unwrap().file_name().into_string().unwrap())
+                .filter(|n| n.starts_with('.'))
+                .collect();
+            assert!(leftovers.is_empty(), "temp dirs left behind: {leftovers:?}");
+            let nested: Vec<_> = std::fs::read_dir(cache.join("rt-rt1"))
+                .unwrap()
+                .map(|e| e.unwrap().file_name().into_string().unwrap())
+                .filter(|n| n.starts_with('.') && n != ".jbundle-complete")
+                .collect();
+            assert!(
+                nested.is_empty(),
+                "loser temp dir nested in runtime: {nested:?}"
+            );
+        }
+
+        // A cache left half-written (by a killed run or an older stub that
+        // extracted in place) has bin/java but no lib/ and no marker. It must
+        // be rebuilt, not trusted.
+        let home = work.path().join("home-legacy");
+        let rt = home.join(".jbundle/cache/rt-rt1");
+        std::fs::create_dir_all(rt.join("bin")).unwrap();
+        std::fs::copy(&java, rt.join("bin/java")).unwrap();
+        let app = home.join(".jbundle/cache/app-app1");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(app.join("app.jar"), b"app-").unwrap();
+        let o = Command::new(&bin).env("HOME", &home).output().unwrap();
+        assert!(
+            o.status.success(),
+            "legacy cache not rebuilt: {}\n{}",
+            String::from_utf8_lossy(&o.stdout),
+            String::from_utf8_lossy(&o.stderr)
+        );
+        assert!(rt.join("lib/zz-last").is_file());
+        assert!(rt.join(".jbundle-complete").is_file());
+        assert!(app.join(".jbundle-complete").is_file());
+    }
+
+    /// A payload that fails to extract must not leave temp entries behind
+    /// in the cache, and must not mark anything complete.
+    #[cfg(unix)]
+    #[test]
+    fn failed_extraction_cleans_up_temp_entries() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+
+        let work = tempfile::tempdir().unwrap();
+        let stub = finalize_stub(&generate(&StubParams {
+            runtime_size: 64,
+            app_size: 0,
+            appcds: false,
+            ..params_default()
+        }));
+        let bin = work.path().join("broken");
+        let mut out = std::fs::File::create(&bin).unwrap();
+        out.write_all(stub.as_bytes()).unwrap();
+        out.write_all(&[0u8; 64]).unwrap(); // not a tar.gz
+        drop(out);
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let home = work.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        let o = std::process::Command::new(&bin)
+            .env("HOME", &home)
+            .output()
+            .unwrap();
+        assert!(!o.status.success());
+        let cache = home.join(".jbundle/cache");
+        let left: Vec<_> = std::fs::read_dir(&cache)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert!(left.is_empty(), "left in cache after failure: {left:?}");
     }
 }
