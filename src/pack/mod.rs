@@ -7,6 +7,7 @@ use std::path::Path;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 
+use crate::config::BannerSize;
 use crate::config::JvmProfile;
 use crate::error::PackError;
 
@@ -19,7 +20,7 @@ pub struct PackOptions<'a> {
     pub profile: &'a JvmProfile,
     pub appcds: bool,
     pub java_version: u8,
-    pub compact_banner: bool,
+    pub banner_size: BannerSize,
     pub one_time_banner: bool,
 }
 
@@ -66,7 +67,7 @@ pub fn create_binary(opts: &PackOptions) -> Result<(), PackError> {
         jvm_args: opts.jvm_args,
         appcds: opts.appcds,
         java_version: opts.java_version,
-        compact_banner: opts.compact_banner,
+        banner_size: opts.banner_size,
         one_time_banner: opts.one_time_banner,
     });
     let stub_script = stub::finalize_stub(&stub_script);

@@ -23,7 +23,7 @@ use clap::Parser;
 use indicatif::HumanBytes;
 
 use cli::{Cli, Command};
-use config::{detect_gc_conflict, BuildConfig, JvmProfile, Target};
+use config::{detect_gc_conflict, resolve_banner_size, BuildConfig, JvmProfile, Target};
 use error::PackError;
 use gradle::Subproject;
 use progress::Pipeline;
@@ -69,6 +69,7 @@ async fn main() -> Result<()> {
             jlink_runtime,
             verbose: _,
             compact_banner,
+            banner_size,
             one_time_banner,
             dry_run: _,
         } => {
@@ -152,11 +153,21 @@ async fn main() -> Result<()> {
                     .and_then(|c| c.crac)
                     .unwrap_or(false);
 
-            let compact_banner = compact_banner
-                || project_config
-                    .as_ref()
-                    .and_then(|c| c.compact_banner)
-                    .unwrap_or(false);
+            let config_compact = project_config
+                .as_ref()
+                .and_then(|c| c.compact_banner)
+                .unwrap_or(false);
+            if compact_banner || config_compact {
+                tracing::warn!(
+                    "compact_banner is deprecated, use banner_size = \"compact\" (or --banner-size compact) instead"
+                );
+            }
+            let banner_size = resolve_banner_size(
+                banner_size,
+                compact_banner,
+                project_config.as_ref().and_then(|c| c.banner_size),
+                config_compact,
+            );
 
             let one_time_banner = one_time_banner
                 || project_config
@@ -218,7 +229,7 @@ async fn main() -> Result<()> {
                 profile: jvm_profile,
                 appcds,
                 crac,
-                compact_banner,
+                banner_size,
                 one_time_banner,
                 gradle_project,
                 build_args,
@@ -626,10 +637,6 @@ async fn run_build(config: BuildConfig) -> Result<()> {
         None
     };
 
-    let compact_banner = config.compact_banner;
-
-    let one_time_banner = config.one_time_banner;
-
     // Step: Pack binary
     let step = pipeline.start_step("Packing binary");
     pack::create_binary(&pack::PackOptions {
@@ -641,8 +648,8 @@ async fn run_build(config: BuildConfig) -> Result<()> {
         profile: &config.profile,
         appcds: config.appcds,
         java_version,
-        compact_banner,
-        one_time_banner,
+        banner_size: config.banner_size,
+        one_time_banner: config.one_time_banner,
     })?;
     let size = std::fs::metadata(&config.output)?.len();
     Pipeline::finish_step(

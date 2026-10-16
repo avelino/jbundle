@@ -15,7 +15,7 @@ profile = "cli"
 shrink = true
 appcds = true
 crac = false
-compact_banner = false
+banner_size = "normal"
 one_time_banner = false
 
 # Gradle multi-project options
@@ -39,7 +39,8 @@ All fields are optional.
 | `shrink` | boolean | `false` | Shrink uberjar by removing non-essential files |
 | `appcds` | boolean | `true` | Enable AppCDS for faster startup |
 | `crac` | boolean | `false` | Enable CRaC checkpoint (Linux only) |
-| `compact_banner` | boolean | `false` | Use a compact banner in the wrapper |
+| `banner_size` | string | `"normal"` | Banner the binary prints on start: `"off"`, `"compact"` or `"normal"` |
+| `compact_banner` | boolean | `false` | Deprecated, same as `banner_size = "compact"` |
 | `gradle_project` | string | — | Gradle subproject to build (for multi-project) |
 | `modules` | array | — | Manual module list (bypasses jdeps detection) |
 | `java_home` | string | — | Path to existing JDK installation (skips download). Falls back to `JAVA_HOME` env var. |

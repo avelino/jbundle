@@ -1,3 +1,4 @@
+use crate::config::BannerSize;
 use crate::config::JvmProfile;
 
 pub struct StubParams<'a> {
@@ -11,7 +12,7 @@ pub struct StubParams<'a> {
     pub jvm_args: &'a [String],
     pub appcds: bool,
     pub java_version: u8,
-    pub compact_banner: bool,
+    pub banner_size: BannerSize,
     pub one_time_banner: bool,
 }
 
@@ -38,10 +39,12 @@ pub fn generate(params: &StubParams) -> String {
     let app_hash = params.app_hash;
     let app_size = params.app_size;
     let crac_size = params.crac_size;
-    let jbundle_banner = if params.compact_banner {
-        r#"echo "binary created with jbundle.avelino.run" >&2"#
-    } else {
-        r#"cat >&2 <<'BANNER'
+
+    let jbundle_banner = match params.banner_size {
+        BannerSize::Off => "",
+        BannerSize::Compact => r#"echo "binary created with jbundle.avelino.run" >&2"#,
+        BannerSize::Normal => {
+            r#"cat >&2 <<'BANNER'
    _ _                    _ _
   (_) |__  _   _ _ __   __| | | ___
   | | '_ \| | | | '_ \ / _` | |/ _ \
@@ -49,6 +52,7 @@ pub fn generate(params: &StubParams) -> String {
  _/ |_.__/ \__,_|_| |_|\__,_|_|\___|
 |__/
 BANNER"#
+        }
     };
 
     let banner_display = one_time_banner_block(jbundle_banner, params.one_time_banner);
@@ -145,7 +149,7 @@ exit 0
 /// lives in `~/.jbundle/cache/runs/<app hash>`, so `jbundle clean` removes it. If it can't be written (read-only
 /// HOME, sandbox) the banner is shown and the app still starts.
 fn one_time_banner_block(banner: &str, one_time: bool) -> String {
-    if !one_time {
+    if !one_time || banner.is_empty() {
         return banner.to_string();
     }
     format!(
@@ -193,7 +197,7 @@ mod tests {
             jvm_args: &[],
             appcds: true,
             java_version: 21,
-            compact_banner: false,
+            banner_size: BannerSize::Normal,
             one_time_banner: false,
         }
     }
@@ -418,7 +422,7 @@ mod tests {
     #[test]
     fn one_time_banner_wraps_compact_banner() {
         let stub = generate(&StubParams {
-            compact_banner: true,
+            banner_size: BannerSize::Compact,
             one_time_banner: true,
             ..params_default()
         });
@@ -426,6 +430,36 @@ mod tests {
         assert!(stub.contains(r#"if [ ! -e "$JBUNDLE_RUNS/$APP_HASH" ]; then"#));
         assert!(stub.contains(r#"echo "binary created with jbundle.avelino.run" >&2"#));
         assert!(!stub.contains("(_) |__"));
+    }
+
+    #[test]
+    fn stub_compact_banner_is_one_line() {
+        let stub = generate(&StubParams {
+            banner_size: BannerSize::Compact,
+            ..params_default()
+        });
+        assert!(stub.contains(r#"echo "binary created with jbundle.avelino.run" >&2"#));
+        assert!(!stub.contains("(_) |__"));
+    }
+
+    #[test]
+    fn one_time_banner_with_banner_off_adds_no_marker() {
+        let stub = generate(&StubParams {
+            banner_size: BannerSize::Off,
+            one_time_banner: true,
+            ..params_default()
+        });
+        assert!(!stub.contains("JBUNDLE_RUNS"));
+    }
+
+    #[test]
+    fn stub_banner_off_prints_nothing() {
+        let stub = generate(&StubParams {
+            banner_size: BannerSize::Off,
+            ..params_default()
+        });
+        assert!(!stub.contains("BANNER"));
+        assert!(!stub.contains("jbundle.avelino.run"));
     }
 
     #[test]
