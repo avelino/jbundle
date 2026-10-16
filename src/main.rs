@@ -70,6 +70,7 @@ async fn main() -> Result<()> {
             verbose: _,
             compact_banner,
             banner_size,
+            one_time_banner,
             dry_run: _,
         } => {
             let input_path =
@@ -168,6 +169,12 @@ async fn main() -> Result<()> {
                 config_compact,
             );
 
+            let one_time_banner = one_time_banner
+                || project_config
+                    .as_ref()
+                    .and_then(|c| c.one_time_banner)
+                    .unwrap_or(false);
+
             // Gradle subproject selection (CLI > config file)
             let gradle_project = gradle_project.or_else(|| {
                 project_config
@@ -223,6 +230,7 @@ async fn main() -> Result<()> {
                 appcds,
                 crac,
                 banner_size,
+                one_time_banner,
                 gradle_project,
                 build_args,
                 build_all: all,
@@ -641,6 +649,7 @@ async fn run_build(config: BuildConfig) -> Result<()> {
         appcds: config.appcds,
         java_version,
         banner_size: config.banner_size,
+        one_time_banner: config.one_time_banner,
     })?;
     let size = std::fs::metadata(&config.output)?.len();
     Pipeline::finish_step(

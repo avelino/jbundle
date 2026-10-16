@@ -31,6 +31,7 @@ jbundle build [OPTIONS] --input <PATH> --output <PATH>
 | `--crac` | — | Enable CRaC checkpoint (Linux only) |
 | `--banner-size <SIZE>` | `normal` | Banner the binary prints on start (`off`, `compact`, `normal`) |
 | `--compact-banner` | `false` | Deprecated, same as `--banner-size compact` |
+| `--one-time-banner` | `false` | Show the banner only on the first run |
 | `--gradle-project <NAME>` | — | Gradle subproject to build (multi-project) |
 | `--all` | — | Build all application subprojects (Gradle) |
 | `--modules <LIST>` | — | Manual module list, comma-separated |

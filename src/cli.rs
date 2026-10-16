@@ -86,6 +86,10 @@ pub enum Command {
         #[arg(long, conflicts_with = "banner_size")]
         compact_banner: bool,
 
+        /// Show the banner only on the first run
+        #[arg(long)]
+        one_time_banner: bool,
+
         /// Banner the binary prints on start: off, compact or normal
         #[arg(long, value_enum)]
         banner_size: Option<crate::config::BannerSize>,

@@ -19,6 +19,7 @@ pub struct ProjectConfig {
     pub crac: Option<bool>,
     pub compact_banner: Option<bool>,
     pub banner_size: Option<BannerSize>,
+    pub one_time_banner: Option<bool>,
     /// Gradle subproject to build (for multi-project builds)
     pub gradle_project: Option<String>,
     /// Manual module override (bypasses jdeps detection)
@@ -64,6 +65,7 @@ appcds = false
 crac = true
 compact_banner = false
 banner_size = "compact"
+one_time_banner = false
 gradle_project = "jabkit"
 modules = ["java.base", "java.sql"]
 java_home = "/usr/lib/jvm/java-21"
@@ -92,6 +94,7 @@ jlink_runtime = "./build/jlink"
         assert_eq!(config.crac, Some(true));
         assert_eq!(config.compact_banner, Some(false));
         assert_eq!(config.banner_size, Some(BannerSize::Compact));
+        assert_eq!(config.one_time_banner, Some(false));
         assert_eq!(config.gradle_project.as_deref(), Some("jabkit"));
         assert_eq!(
             config.modules,

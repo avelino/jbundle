@@ -233,6 +233,7 @@ pub struct BuildConfig {
     pub appcds: bool,
     pub crac: bool,
     pub banner_size: BannerSize,
+    pub one_time_banner: bool,
     /// Gradle subproject to build (for multi-project builds)
     pub gradle_project: Option<String>,
     /// Extra arguments passed to the build tool
