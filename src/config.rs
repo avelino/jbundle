@@ -159,6 +159,21 @@ impl Target {
         }
     }
 
+    /// The launcher is a POSIX shell stub, so only Linux and macOS binaries
+    /// can be produced. Windows works as a build host, not as an output.
+    pub fn ensure_supported_output(&self) -> Result<(), String> {
+        if self.os == TargetOs::Windows {
+            return Err(
+                "jbundle can't produce Windows binaries yet: the launcher is a shell script. \
+                 Pass --target linux-x64, linux-aarch64, macos-x64 or macos-aarch64 \
+                 (on a Windows host the default target is windows-x64, so --target is required). \
+                 Follow https://github.com/avelino/jbundle/issues/74 for native Windows output."
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
+
     pub fn adoptium_os(&self) -> &'static str {
         match self.os {
             TargetOs::Linux => "linux",
@@ -399,5 +414,26 @@ mod tests {
             },
         };
         assert!(cross.is_cross_compile());
+    }
+
+    #[test]
+    fn windows_is_not_a_supported_output() {
+        let t = Target::from_str("windows-x64").unwrap();
+        let err = t.ensure_supported_output().unwrap_err();
+        assert!(err.contains("--target linux-x64"));
+        assert!(err.contains("issues/74"));
+    }
+
+    #[test]
+    fn unix_targets_are_supported_outputs() {
+        for t in ["linux-x64", "linux-aarch64", "macos-x64", "macos-aarch64"] {
+            assert!(
+                Target::from_str(t)
+                    .unwrap()
+                    .ensure_supported_output()
+                    .is_ok(),
+                "{t}"
+            );
+        }
     }
 }
