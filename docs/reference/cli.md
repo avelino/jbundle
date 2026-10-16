@@ -29,7 +29,8 @@ jbundle build [OPTIONS] --input <PATH> --output <PATH>
 | `--shrink [true\|false]` | `false` | Shrink uberjar by removing non-essential files |
 | `--no-appcds` | — | Disable AppCDS generation |
 | `--crac` | — | Enable CRaC checkpoint (Linux only) |
-| `--compact-banner` | — | Use a compact banner in the wrapper |
+| `--banner-size <SIZE>` | `normal` | Banner the binary prints on start (`off`, `compact`, `normal`) |
+| `--compact-banner` | `false` | Deprecated, same as `--banner-size compact` |
 | `--gradle-project <NAME>` | — | Gradle subproject to build (multi-project) |
 | `--all` | — | Build all application subprojects (Gradle) |
 | `--modules <LIST>` | — | Manual module list, comma-separated |

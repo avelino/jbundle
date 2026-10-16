@@ -82,9 +82,13 @@ pub enum Command {
         #[arg(short, long)]
         verbose: bool,
 
-        /// Use a compact banner in the wrapper
-        #[arg(long)]
+        /// Deprecated: use `--banner-size compact`
+        #[arg(long, conflicts_with = "banner_size")]
         compact_banner: bool,
+
+        /// Banner the binary prints on start: off, compact or normal
+        #[arg(long, value_enum)]
+        banner_size: Option<crate::config::BannerSize>,
 
         /// Show what would be done without executing anything
         #[arg(long)]

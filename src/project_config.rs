@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use crate::config::BannerSize;
 use anyhow::Result;
 use serde::Deserialize;
 
@@ -17,6 +18,7 @@ pub struct ProjectConfig {
     pub appcds: Option<bool>,
     pub crac: Option<bool>,
     pub compact_banner: Option<bool>,
+    pub banner_size: Option<BannerSize>,
     /// Gradle subproject to build (for multi-project builds)
     pub gradle_project: Option<String>,
     /// Manual module override (bypasses jdeps detection)
@@ -61,6 +63,7 @@ profile = "cli"
 appcds = false
 crac = true
 compact_banner = false
+banner_size = "compact"
 gradle_project = "jabkit"
 modules = ["java.base", "java.sql"]
 java_home = "/usr/lib/jvm/java-21"
@@ -88,6 +91,7 @@ jlink_runtime = "./build/jlink"
         assert_eq!(config.appcds, Some(false));
         assert_eq!(config.crac, Some(true));
         assert_eq!(config.compact_banner, Some(false));
+        assert_eq!(config.banner_size, Some(BannerSize::Compact));
         assert_eq!(config.gradle_project.as_deref(), Some("jabkit"));
         assert_eq!(
             config.modules,

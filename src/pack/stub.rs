@@ -1,3 +1,4 @@
+use crate::config::BannerSize;
 use crate::config::JvmProfile;
 
 pub struct StubParams<'a> {
@@ -11,7 +12,7 @@ pub struct StubParams<'a> {
     pub jvm_args: &'a [String],
     pub appcds: bool,
     pub java_version: u8,
-    pub compact_banner: bool,
+    pub banner_size: BannerSize,
 }
 
 pub fn generate(params: &StubParams) -> String {
@@ -37,10 +38,12 @@ pub fn generate(params: &StubParams) -> String {
     let app_hash = params.app_hash;
     let app_size = params.app_size;
     let crac_size = params.crac_size;
-    let jbundle_banner = if params.compact_banner {
-        r#"echo "binary created with jbundle.avelino.run" >&2"#
-    } else {
-        r#"cat >&2 <<'BANNER'
+
+    let jbundle_banner = match params.banner_size {
+        BannerSize::Off => "",
+        BannerSize::Compact => r#"echo "binary created with jbundle.avelino.run" >&2"#,
+        BannerSize::Normal => {
+            r#"cat >&2 <<'BANNER'
    _ _                    _ _
   (_) |__  _   _ _ __   __| | | ___
   | | '_ \| | | | '_ \ / _` | |/ _ \
@@ -48,6 +51,7 @@ pub fn generate(params: &StubParams) -> String {
  _/ |_.__/ \__,_|_| |_|\__,_|_|\___|
 |__/
 BANNER"#
+        }
     };
 
     // AppCDS via AutoCreateSharedArchive (JDK 19+)
@@ -174,7 +178,7 @@ mod tests {
             jvm_args: &[],
             appcds: true,
             java_version: 21,
-            compact_banner: false,
+            banner_size: BannerSize::Normal,
         }
     }
 
@@ -341,6 +345,27 @@ mod tests {
         assert!(!finalized.contains("__STUB_SIZE__"));
         assert!(finalized.contains("STUB_SIZE="));
     }
+
+    #[test]
+    fn stub_compact_banner_is_one_line() {
+        let stub = generate(&StubParams {
+            banner_size: BannerSize::Compact,
+            ..params_default()
+        });
+        assert!(stub.contains(r#"echo "binary created with jbundle.avelino.run" >&2"#));
+        assert!(!stub.contains("(_) |__"));
+    }
+
+    #[test]
+    fn stub_banner_off_prints_nothing() {
+        let stub = generate(&StubParams {
+            banner_size: BannerSize::Off,
+            ..params_default()
+        });
+        assert!(!stub.contains("BANNER"));
+        assert!(!stub.contains("jbundle.avelino.run"));
+    }
+
     #[test]
     fn stub_extracts_via_temp_dir_and_rename() {
         let stub = generate(&params_default());

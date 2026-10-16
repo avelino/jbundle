@@ -2,6 +2,36 @@ use std::path::PathBuf;
 
 use crate::error::PackError;
 
+/// How much of the jbundle banner the launcher prints on stderr.
+#[derive(clap::ValueEnum, serde::Deserialize, Copy, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum BannerSize {
+    /// No banner at all
+    #[value(alias = "none")]
+    #[serde(alias = "none")]
+    Off,
+    /// A single line
+    Compact,
+    /// The ASCII art banner
+    #[default]
+    Normal,
+}
+
+/// CLI beats jbundle.toml. Inside each layer `banner_size` wins over the
+/// deprecated `compact_banner`.
+pub fn resolve_banner_size(
+    cli_size: Option<BannerSize>,
+    cli_compact: bool,
+    config_size: Option<BannerSize>,
+    config_compact: bool,
+) -> BannerSize {
+    cli_size
+        .or(cli_compact.then_some(BannerSize::Compact))
+        .or(config_size)
+        .or(config_compact.then_some(BannerSize::Compact))
+        .unwrap_or_default()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum JvmProfile {
     Cli,
@@ -202,7 +232,7 @@ pub struct BuildConfig {
     pub profile: JvmProfile,
     pub appcds: bool,
     pub crac: bool,
-    pub compact_banner: bool,
+    pub banner_size: BannerSize,
     /// Gradle subproject to build (for multi-project builds)
     pub gradle_project: Option<String>,
     /// Extra arguments passed to the build tool
@@ -413,6 +443,45 @@ mod tests {
             },
         };
         assert!(cross.is_cross_compile());
+    }
+
+    #[test]
+    fn banner_size_defaults_to_normal() {
+        assert_eq!(
+            resolve_banner_size(None, false, None, false),
+            BannerSize::Normal
+        );
+    }
+
+    #[test]
+    fn banner_size_cli_beats_config() {
+        let got = resolve_banner_size(Some(BannerSize::Off), false, Some(BannerSize::Normal), true);
+        assert_eq!(got, BannerSize::Off);
+        let got = resolve_banner_size(None, true, Some(BannerSize::Off), false);
+        assert_eq!(got, BannerSize::Compact);
+    }
+
+    #[test]
+    fn banner_size_config_beats_legacy_compact() {
+        let got = resolve_banner_size(None, false, Some(BannerSize::Off), true);
+        assert_eq!(got, BannerSize::Off);
+        let got = resolve_banner_size(None, false, None, true);
+        assert_eq!(got, BannerSize::Compact);
+    }
+
+    #[test]
+    fn banner_size_parses_from_cli_values() {
+        use clap::ValueEnum;
+        assert_eq!(BannerSize::from_str("off", false), Ok(BannerSize::Off));
+        assert_eq!(BannerSize::from_str("none", false), Ok(BannerSize::Off));
+        assert_eq!(
+            BannerSize::from_str("compact", false),
+            Ok(BannerSize::Compact)
+        );
+        assert_eq!(
+            BannerSize::from_str("normal", false),
+            Ok(BannerSize::Normal)
+        );
     }
 
     #[test]
