@@ -69,7 +69,10 @@ pub fn analyze_jar(jar_path: &Path) -> Result<AnalysisReport, PackError> {
             .by_index(i)
             .map_err(|e| PackError::AnalyzeFailed(format!("zip entry error: {e}")))?;
 
-        let name = entry.name().to_string();
+        let name = entry
+            .name()
+            .map_err(|e| PackError::AnalyzeFailed(format!("zip entry name: {e}")))?
+            .into_owned();
         if entry.is_dir() {
             continue;
         }

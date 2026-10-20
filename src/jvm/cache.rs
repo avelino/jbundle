@@ -101,6 +101,7 @@ pub fn jdk_bin(jdk_path: &Path, tool: &str) -> PathBuf {
 mod tests {
     use super::*;
     use crate::config::{TargetArch, TargetOs};
+    use std::io::Write;
     use tempfile::tempdir;
 
     #[test]
@@ -169,6 +170,93 @@ mod tests {
 
         assert!(dir.path().join("a").exists());
         assert!(dir.path().join("b").exists());
+    }
+
+    #[test]
+    fn extract_zip_unpacks_nested_entries() {
+        // Adoptium Windows JDKs arrive as a zip with one top-level directory.
+        // This is the only production caller of ZipArchive::extract.
+        let dir = tempdir().unwrap();
+        let archive_path = dir.path().join("jdk.zip");
+        let dest = dir.path().join("dest");
+        std::fs::create_dir(&dest).unwrap();
+
+        {
+            let file = std::fs::File::create(&archive_path).unwrap();
+            let mut zip = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default();
+            zip.add_directory("jdk-21.0.1/", options).unwrap();
+            zip.add_directory("jdk-21.0.1/bin/", options).unwrap();
+            zip.start_file("jdk-21.0.1/bin/java", options).unwrap();
+            zip.write_all(b"java").unwrap();
+            zip.start_file("jdk-21.0.1/release", options).unwrap();
+            zip.write_all(b"JAVA_VERSION=\"21.0.1\"").unwrap();
+            zip.finish().unwrap();
+        }
+
+        extract_zip(&archive_path, &dest).unwrap();
+
+        assert_eq!(
+            std::fs::read(dest.join("jdk-21.0.1/bin/java")).unwrap(),
+            b"java"
+        );
+        assert_eq!(
+            std::fs::read(dest.join("jdk-21.0.1/release")).unwrap(),
+            b"JAVA_VERSION=\"21.0.1\""
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn extract_zip_strips_suid_and_rejects_symlink_escape() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempdir().unwrap();
+        let archive_path = dir.path().join("jdk.zip");
+        let dest = dir.path().join("dest");
+        std::fs::create_dir(&dest).unwrap();
+        let outside = dir.path().join("outside");
+        std::fs::write(&outside, b"secret").unwrap();
+
+        {
+            let file = std::fs::File::create(&archive_path).unwrap();
+            let mut zip = zip::ZipWriter::new(file);
+            // Regular file (0o100000) plus rwxr-xr-x, with the SUID bit set.
+            // zip 9 clears SUID/SGID/sticky before chmod.
+            let suid_mode = 0o100755 | 0o4000;
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored)
+                .system(zip::System::Unix)
+                .external_attributes(suid_mode << 16);
+            zip.start_file("bin/java", options).unwrap();
+            zip.write_all(b"java").unwrap();
+            zip.add_symlink(
+                "escape",
+                "../outside",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+            zip.finish().unwrap();
+        }
+
+        let err = extract_zip(&archive_path, &dest).unwrap_err();
+        let message = err.to_string();
+        assert!(
+            message.contains("escapes the destination directory"),
+            "unexpected extract error: {message}"
+        );
+
+        let mode = std::fs::metadata(dest.join("bin/java"))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(
+            mode & 0o7000,
+            0,
+            "SUID/SGID/sticky survived extraction, mode={mode:o}"
+        );
+        assert_eq!(std::fs::read(&outside).unwrap(), b"secret");
+        assert!(std::fs::symlink_metadata(dest.join("escape")).is_err());
     }
 
     #[test]

@@ -44,7 +44,10 @@ pub fn shrink_jar(jar_path: &Path) -> Result<ShrinkResult, PackError> {
             .by_index(i)
             .map_err(|e| PackError::ShrinkFailed(format!("zip entry error: {e}")))?;
 
-        let name = entry.name().to_string();
+        let name = entry
+            .name()
+            .map_err(|e| PackError::ShrinkFailed(format!("zip entry name: {e}")))?
+            .into_owned();
 
         if should_skip(&name) {
             continue;
@@ -223,7 +226,7 @@ mod tests {
         let out_file = std::fs::File::open(&result.jar_path).unwrap();
         let out_archive = ZipArchive::new(out_file).unwrap();
         let names: Vec<String> = (0..out_archive.len())
-            .map(|i| out_archive.name_for_index(i).unwrap().to_string())
+            .map(|i| out_archive.name_for_index(i).unwrap().unwrap().into_owned())
             .collect();
 
         assert!(names.contains(&"META-INF/MANIFEST.MF".to_string()));

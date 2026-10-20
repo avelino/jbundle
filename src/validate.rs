@@ -59,7 +59,7 @@ fn detect_max_class_version(jar_path: &Path) -> Result<Option<ClassVersionInfo>,
         }
 
         let mut entry = archive.by_index(i)?;
-        let name = entry.name().to_string();
+        let name = entry.name()?.into_owned();
 
         if !name.ends_with(".class") {
             continue;
