@@ -35,7 +35,7 @@ pub fn hash_file(path: &Path) -> Result<String, PackError> {
         }
         hasher.update(&buf[..n]);
     }
-    let hash = format!("{:x}", hasher.finalize());
+    let hash = crate::hex::encode(hasher.finalize().as_slice());
     Ok(hash[..16].to_string())
 }
 
@@ -43,6 +43,16 @@ pub fn hash_file(path: &Path) -> Result<String, PackError> {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn hash_file_hello_world_is_sha256_prefix() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("test.bin");
+        std::fs::write(&file, b"hello world").unwrap();
+
+        // sha256("hello world"), first 16 hex chars. Same text sha2 0.10 printed.
+        assert_eq!(hash_file(&file).unwrap(), "b94d27b9934d3e08");
+    }
 
     #[test]
     fn hash_file_is_deterministic() {

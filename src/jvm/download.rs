@@ -170,13 +170,61 @@ fn classify_reqwest_error(e: &reqwest::Error) -> DownloadAttemptError {
 }
 
 fn file_sha256(path: &PathBuf) -> Result<String, PackError> {
+    use std::io::Read;
     let file = std::fs::File::open(path)?;
     let mut reader = std::io::BufReader::new(file);
     let mut hasher = Sha256::new();
-    std::io::copy(&mut reader, &mut hasher)?;
-    Ok(format!("{:x}", hasher.finalize()))
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = reader.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(crate::hex::encode(hasher.finalize().as_slice()))
 }
 
 fn verify_checksum(path: &PathBuf, expected: &str) -> Result<bool, PackError> {
     Ok(file_sha256(path)? == expected)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_temp(bytes: &[u8]) -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("blob");
+        std::fs::write(&path, bytes).unwrap();
+        (dir, path)
+    }
+
+    #[test]
+    fn file_sha256_hello_world_matches_known_hex() {
+        let (_dir, path) = write_temp(b"hello world");
+        assert_eq!(
+            file_sha256(&path).unwrap(),
+            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+        );
+    }
+
+    #[test]
+    fn file_sha256_empty_matches_known_hex() {
+        let (_dir, path) = write_temp(b"");
+        assert_eq!(
+            file_sha256(&path).unwrap(),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
+    #[test]
+    fn file_sha256_spans_multiple_read_chunks() {
+        // Larger than the 8 KiB buffer, so `update` runs more than once.
+        let (_dir, path) = write_temp(&vec![0x5a; 20_000]);
+        assert_eq!(
+            file_sha256(&path).unwrap(),
+            "405c8ba2c927413959ba97acc3faa99ba5de1dcff545f15bafda781068878fae"
+        );
+    }
 }
