@@ -7,6 +7,7 @@ mod detect;
 mod diagnostic;
 mod error;
 mod gradle;
+mod hex;
 mod jlink;
 mod jvm;
 mod pack;

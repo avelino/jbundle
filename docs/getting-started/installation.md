@@ -78,7 +78,7 @@ Build from source using Cargo (Rust's package manager).
 
 ### Prerequisites
 
-* [Rust toolchain](https://rustup.rs/) (1.70+)
+* [Rust toolchain](https://rustup.rs/) (1.88+)
 * Git
 * SSL development libraries
   * Debian/Ubuntu: `sudo apt update && sudo apt install libssl-dev`

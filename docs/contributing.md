@@ -6,7 +6,7 @@ Contributions are welcome!
 
 ### Prerequisites
 
-* [Rust toolchain](https://rustup.rs/) (1.70+)
+* [Rust toolchain](https://rustup.rs/) (1.88+)
 * Git
 
 ### Setup
